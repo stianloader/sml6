@@ -1,0 +1,91 @@
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'maven-publish'
+    id 'java-gradle-plugin'
+}
+
+group = 'org.stianloader'
+base {
+    archivesName = 'sml6'
+}
+def baseVersion = '0.0.1'
+
+java.targetCompatibility = compileJava.targetCompatibility = '17'
+java.sourceCompatibility = compileJava.sourceCompatibility = '17'
+
+repositories {
+    mavenLocal()
+    maven {
+        name = 'stianloader-maven'
+        url = 'https://stianloader.org/maven/'
+    }
+    mavenCentral()
+}
+
+dependencies {
+    // https://mvnrepository.com/artifact/de.geolykt.starloader/sl-deobf
+    implementation "de.geolykt.starloader:sl-deobf:0.2.0"
+    // https://mvnrepository.com/artifact/de.geolykt.starloader/reversible-access-setter
+    implementation "de.geolykt.starloader:reversible-access-setter:1.1.0"
+
+    implementation gradleApi()
+    implementation "org.ow2.asm:asm:9.9"
+    implementation "org.ow2.asm:asm-tree:9.9"
+    implementation "org.ow2.asm:asm-util:9.9"
+    implementation "org.ow2.asm:asm-commons:9.9"
+
+    // https://mvnrepository.com/artifact/org.json/json
+    implementation 'org.json:json:20250517'
+
+    // https://mvnrepository.com/artifact/org.vineflower/vineflower
+    implementation 'org.vineflower:vineflower:1.11.1'
+
+    // https://mvnrepository.com/artifact/net.fabricmc/mapping-io
+    implementation 'net.fabricmc:mapping-io:0.7.1'
+
+    // https://mvnrepository.com/artifact/org.jetbrains/annotations
+    compileOnly "org.jetbrains:annotations:26.0.2-1"
+
+    implementation 'org.stianloader:stianloader-remapper:0.1.1-a20241109'
+    implementation 'org.stianloader:micromixin-remapper:0.2.1-a20241028'
+}
+
+gradlePlugin {
+    plugins {
+        gslStarplanePlugin {
+            id = base.archivesName.get()
+            version = baseVersion
+            implementationClass = 'org.stianloader.sml6.SML6GradlePlugin'
+        }
+    }
+}
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    archiveClassifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = project.group
+            artifactId = base.archivesName.get()
+            version = baseVersion
+
+            from components['java']
+
+            artifact sourcesJar
+        }
+    }
+    repositories {
+        if (System.getProperty('publishRepo') != null) {
+            maven {
+                url System.getProperty('publishRepo')
+                allowInsecureProtocol = true
+            }
+        } else {
+            mavenLocal()
+        }
+    }
+}
