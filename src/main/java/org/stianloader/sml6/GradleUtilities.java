@@ -21,7 +21,7 @@ class GradleUtilities {
     }
 
     static Provider<String> getVersion(Project project) {
-        return project.getProviders().provider(project::getVersion).map(Object::toString).filter(Project.DEFAULT_STATUS::equals).orElse("");
+        return project.getProviders().provider(project::getVersion).map(Object::toString).filter(v -> v != Project.DEFAULT_VERSION).orElse("");
     }
 
     static Provider<Directory> getDistsDirectory(Project project) {

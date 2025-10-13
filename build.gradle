@@ -5,11 +5,11 @@ plugins {
     id 'java-gradle-plugin'
 }
 
-group = 'org.stianloader'
+project.group = 'org.stianloader'
 base {
     archivesName = 'sml6'
 }
-def baseVersion = '0.0.1'
+project.version = '0.0.1'
 
 java.targetCompatibility = compileJava.targetCompatibility = '17'
 java.sourceCompatibility = compileJava.sourceCompatibility = '17'
@@ -58,7 +58,7 @@ gradlePlugin {
     plugins {
         gslStarplanePlugin {
             id = base.archivesName.get()
-            version = baseVersion
+            version = project.version
             implementationClass = 'org.stianloader.sml6.SML6GradlePlugin'
         }
     }
@@ -74,7 +74,7 @@ publishing {
         mavenJava(MavenPublication) {
             groupId = project.group
             artifactId = base.archivesName.get()
-            version = baseVersion
+            version = project.version
 
             from components['java']
 
