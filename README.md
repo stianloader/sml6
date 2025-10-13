@@ -15,11 +15,23 @@ is also creating spStarmap-compatible mapping files.
 ## Tasks
 
 SML6 provides the following tasks:
-- org.stianloader.sml6.DeobfuscateGameTask
-- org.stianloader.sml6.FetchGameTask
+- `org.stianloader.sml6.DeobfuscateGameTask`
+- `org.stianloader.sml6.FetchGameTask`
+- `org.stianloader.sml6.XZTarBallerTask`
+- `org.stianloader.sml6.XZCompressTask`
 
 Unlike gslStarplane, all tasks should be compatible with gradle's
 configuration cache by default.
+
+Please note that unlike gslStarplane, no tasks are configurated by default.
+As such, you need to register the tasks in the way you want. Of course,
+some conventions are applied for your sanity. Please refer to the
+"Task configuration" section for more in-depth information on the configuration
+of individual tasks.
+
+SML6 also provides the following internal tasks; they are not meant for
+direct use by API users:
+- `org.stianloader.sml6.AbstractArtifactTask`
 
 ## Task configuration
 
@@ -65,3 +77,91 @@ The default values of this task are for galimulator. For other games, readjust t
 SML6 expects games to be bundled as a single jar. However, many games are likely to be bundled across multiple jars.
 In that case, just create a merge request to SML6 to implement the desired functionality. I unfortunately
 lack the resources to do the job for you (after all, I won't be modding the same game as you).
+
+### XZTarBallerTask
+
+The `XZTarBallerTask` class extends `Tar`.
+
+The XZTarBallerTask task defines the following properties:
+- `compressionLevel`: `Property<Integer>`, the compression level to use for XZ. Maximum value is 9, however for small-ish files the default of 6 does the same thing.
+
+All properties of `Tar` also apply, with the exception of `compression`, which is unused.
+
+The archive's default destination directory is by default set to
+[BasePluginExtension#getDistsDirectory](https://docs.gradle.org/9.1.0/javadoc/org/gradle/api/plugins/BasePluginExtension.html#getDistsDirectory()).
+The default archive name is similarly derived.
+If the base plugin is absent, sane defaults will be used.
+
+The XZTarBallerTask task is meant for shipping compressed mapping files. There is no real need
+for using this exact task, and other compression methods can be used.
+However, at the point of writing (2025-Oct-13), gslStarplane only supports .tar.xz and .xz
+compression. Though that may be subject to change in future versions of gslStarplane.
+
+XZTarBallerTask is only meant to compress engima mapping directories. For other formats,
+use the XZCompressTask class instead.
+
+Example task configuration:
+```groovy
+task tarballXZ(type: org.stianloader.sml6.XZTarBallerTask) {
+    from "src/mappings"
+    group = "build"
+    archiveExtension = "enigma.tar.xz"
+}
+
+assemble.dependsOn(tarballXZ)
+```
+
+### XZCompressTask
+
+The `XZCompressTask` class extends `AbstractArtifactTask`, and thus shares many
+of the properties present in `AbstractArchiveTask`, namely all the `archive`
+properties, as well as the `destinationDirectory` property.
+
+The `XZCompressTask` task defines the following properties:
+- `compressionLevel`: `Property<Integer>`, the compression level to use for XZ. Maximum value is 9, however for small-ish files the default of 6 does the same thing.
+- `inputFile`: `RegularFileProperty`, the input file to compress
+
+To improve ease-of-use (or to just alleviate the pains of muscle-memory), the
+`XZCompressTask` supports the `from(Object)` notation. However, keep in mind
+that the method may only be called once. Further, `XZCompressTask` can only
+compress a single file. To compress an entire directory or otherwise multiple
+files at once, consider using `XZTarBallerTask` instead. The `into(Object)`
+notation is not supported - not that it makes any sense in the first place.
+
+The `XZCompressTask` task is meant for shipping compressed mapping files. There
+is no real need for using this exact task, and other compression methods can be
+used. However, at the point of writing (2025-Oct-13), gslStarplane only
+supports .tar.xz and .xz compression. Though that may be subject to change in
+future versions of gslStarplane.
+
+The archive's default destination directory is set to the directory defined by
+[BasePluginExtension#getDistsDirectory](https://docs.gradle.org/9.1.0/javadoc/org/gradle/api/plugins/BasePluginExtension.html#getDistsDirectory()).
+The default archive name is similarly derived.
+If the base plugin is absent, sane defaults will be used.
+
+To express the results of the `XZCompressTask` as a `PublishArtifact`,
+use the `asArtifact()` method provided by `AbstractArtifactTask`.
+You will need to mainly use this for maven publications.
+
+Example task configuration:
+```groovy
+task compressXZ(type: org.stianloader.sml6.XZCompressTask) {
+    from  "tiny-file.tiny"
+    group = "build"
+    archiveExtension = "tiny.xz"
+}
+
+assemble.dependsOn(compressXZ)
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = project.group
+            artifactId = project.base.archivesName.get()
+            version = project.version
+
+            artifact compressXZ.asArtifact()
+        }
+    }
+}
+```
