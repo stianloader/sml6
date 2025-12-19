@@ -15,6 +15,7 @@ is also creating spStarmap-compatible mapping files.
 ## Tasks
 
 SML6 provides the following tasks:
+- `org.stianloader.sml6.tasks.AggregateMappingsTask`
 - `org.stianloader.sml6.tasks.DeobfuscateGameTask`
 - `org.stianloader.sml6.tasks.FetchGameTask`
 - `org.stianloader.sml6.tasks.XZTarBallerTask`
@@ -34,6 +35,42 @@ direct use by API users:
 - `org.stianloader.sml6.tasks.AbstractArtifactTask`
 
 ## Task configuration
+
+### AggregateMappingsTask
+
+The AggregateMappingsTask task defines following properties:
+- `inputFormat` (**mandatory**): `Property<MappingFormat>`, defines the format in which the input files are stored in.
+- `outputFormat` (**mandatory**): `Property<MappingFormat>`, defines the format of the output file.
+
+The `AggregateMappingsTask` extends `AbstractArchiveTask`, meaning that the
+task inputs and outputs can be defined as it should be expected of tasks of
+that type.
+
+The fully qualified name of `MappingFormat` is `net.fabricmc.mappingio.format.MappingFormat`
+which is an enum provided by fabric's mapping-io library. For convinience, sml6 provides
+the `inputFormat(String)` and `outputFormat(String)` methods to set the value of
+the respective properties without having to use the fully qualified name.
+
+In essence `AggregateMappingsTask` is a task that converts mapping files between
+formats. However, the main usecase is converting an enigma directory into a single
+file - usually the tinyv2 or enigma formats. Although it might be theoretically
+possible to use this task to "explode" a mapping file into an enigma directory,
+doing so is not particularly recommended due to the semantics of `AbstractArchiveTask`.
+
+This task does not perform descriptor inferrence or other things that might be
+required to convert from formats that might omit certain metadata.
+
+Example task configuration:
+```groovy
+task aggregateToTiny(type: org.stianloader.sml6.tasks.AggregateMappingsTask) {
+    from "src/mappings"
+    group = "build"
+    archiveExtension = "tinyv2"
+
+    inputFormat "enigma"
+    outputFormat "tiny v2"
+}
+```
 
 ### DeobfuscateGameTask
 

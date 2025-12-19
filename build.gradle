@@ -30,28 +30,28 @@ dependencies {
     implementation "de.geolykt.starloader:reversible-access-setter:1.1.0"
 
     implementation gradleApi()
-    implementation "org.ow2.asm:asm:9.9"
-    implementation "org.ow2.asm:asm-tree:9.9"
-    implementation "org.ow2.asm:asm-util:9.9"
-    implementation "org.ow2.asm:asm-commons:9.9"
+    implementation "org.ow2.asm:asm:9.9.1"
+    implementation "org.ow2.asm:asm-tree:9.9.1"
+    implementation "org.ow2.asm:asm-util:9.9.1"
+    implementation "org.ow2.asm:asm-commons:9.9.1"
 
     // https://mvnrepository.com/artifact/org.json/json
     implementation 'org.json:json:20250517'
 
     // https://mvnrepository.com/artifact/org.vineflower/vineflower
-    implementation 'org.vineflower:vineflower:1.11.1'
+    implementation 'org.vineflower:vineflower:1.11.2'
 
     // https://mvnrepository.com/artifact/net.fabricmc/mapping-io
-    implementation 'net.fabricmc:mapping-io:0.7.1'
+    implementation 'net.fabricmc:mapping-io:0.8.0'
 
     // https://mvnrepository.com/artifact/org.jetbrains/annotations
     compileOnly "org.jetbrains:annotations:26.0.2-1"
 
     // https://mvnrepository.com/artifact/org.tukaani/xz
-    implementation 'org.tukaani:xz:1.10'
+    implementation 'org.tukaani:xz:1.11'
 
     implementation 'org.stianloader:stianloader-remapper:0.1.1-a20241109'
-    implementation 'org.stianloader:micromixin-remapper:0.2.1-a20241028'
+    implementation 'org.stianloader:micromixin-remapper:0.2.2-a20251218'
 }
 
 gradlePlugin {

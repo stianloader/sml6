@@ -169,7 +169,7 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
                 remapper.addTargets(deobfuscator.getClassNodesDirectly());
                 long startSlStarmap = System.nanoTime();
                 AutodeobfRunner deobf;
-                
+
                 String autodeobfVersion = this.getAutodeobfVersion().get();
                 if (autodeobfVersion.equals("5.0.2")) {
                     deobf = new Autodeobf502(deobfuscator.getClassNodesDirectly(), remapper);
