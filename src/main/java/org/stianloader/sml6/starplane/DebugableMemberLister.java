@@ -58,7 +58,8 @@ public class DebugableMemberLister implements MemberLister {
     }
 
     @Override
-    public @NotNull Collection<MemberRef> tryInferMember(@NotNull String owner, @Nullable String name, @Nullable String desc) {
+    @NotNull
+    public Collection<MemberRef> tryInferMember(@NotNull String owner, @Nullable String name, @Nullable String desc) {
         ClassNode node = this.libraryNodes.get(owner);
         if (node == null) {
             return Collections.emptySet();

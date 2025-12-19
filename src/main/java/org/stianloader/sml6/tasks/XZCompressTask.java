@@ -1,4 +1,4 @@
-package org.stianloader.sml6;
+package org.stianloader.sml6.tasks;
 
 import java.io.IOException;
 import java.io.InputStream;

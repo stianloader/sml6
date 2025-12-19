@@ -1,4 +1,4 @@
-package org.stianloader.sml6;
+package org.stianloader.sml6.tasks;
 
 import java.io.File;
 import java.util.Date;
@@ -19,6 +19,7 @@ import org.gradle.work.DisableCachingByDefault;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.Nullable;
+import org.stianloader.sml6.GradleUtilities;
 
 @ApiStatus.NonExtendable
 @DisableCachingByDefault(because = "Abstract super-class, not to be instantiated directly")

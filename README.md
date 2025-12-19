@@ -15,10 +15,10 @@ is also creating spStarmap-compatible mapping files.
 ## Tasks
 
 SML6 provides the following tasks:
-- `org.stianloader.sml6.DeobfuscateGameTask`
-- `org.stianloader.sml6.FetchGameTask`
-- `org.stianloader.sml6.XZTarBallerTask`
-- `org.stianloader.sml6.XZCompressTask`
+- `org.stianloader.sml6.tasks.DeobfuscateGameTask`
+- `org.stianloader.sml6.tasks.FetchGameTask`
+- `org.stianloader.sml6.tasks.XZTarBallerTask`
+- `org.stianloader.sml6.tasks.XZCompressTask`
 
 Unlike gslStarplane, all tasks should be compatible with gradle's
 configuration cache by default.
@@ -31,7 +31,7 @@ of individual tasks.
 
 SML6 also provides the following internal tasks; they are not meant for
 direct use by API users:
-- `org.stianloader.sml6.AbstractArtifactTask`
+- `org.stianloader.sml6.tasks.AbstractArtifactTask`
 
 ## Task configuration
 
@@ -102,7 +102,7 @@ use the XZCompressTask class instead.
 
 Example task configuration:
 ```groovy
-task tarballXZ(type: org.stianloader.sml6.XZTarBallerTask) {
+task tarballXZ(type: org.stianloader.sml6.tasks.XZTarBallerTask) {
     from "src/mappings"
     group = "build"
     archiveExtension = "enigma.tar.xz"
@@ -145,7 +145,7 @@ You will need to mainly use this for maven publications.
 
 Example task configuration:
 ```groovy
-task compressXZ(type: org.stianloader.sml6.XZCompressTask) {
+task compressXZ(type: org.stianloader.sml6.tasks.XZCompressTask) {
     from  "tiny-file.tiny"
     group = "build"
     archiveExtension = "tiny.xz"

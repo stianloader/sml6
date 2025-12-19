@@ -1,4 +1,4 @@
-package org.stianloader.sml6;
+package org.stianloader.sml6.tasks;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -25,8 +25,8 @@ import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
-import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
@@ -222,8 +222,7 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
     @Inject
     protected abstract ProjectLayout getLayout();
 
-    @OutputDirectory
-    @Optional
+    @Internal("Transitively affects other output locations. Not used directly.")
     public abstract DirectoryProperty getOutputDirectory();
 
     @OutputFile

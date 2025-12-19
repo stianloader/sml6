@@ -1,4 +1,4 @@
-package org.stianloader.sml6;
+package org.stianloader.sml6.tasks;
 
 import java.io.FileOutputStream;
 
@@ -12,6 +12,7 @@ import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.bundling.Tar;
+import org.stianloader.sml6.GradleUtilities;
 import org.tukaani.xz.LZMA2Options;
 import org.tukaani.xz.XZOutputStream;
 
