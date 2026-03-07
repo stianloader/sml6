@@ -34,16 +34,15 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceMethodVisitor;
-
-import de.geolykt.starloader.deobf.LIFOQueue;
-import de.geolykt.starloader.deobf.MethodReference;
-import de.geolykt.starloader.deobf.StackElement;
-import de.geolykt.starloader.deobf.StackWalker;
-import de.geolykt.starloader.deobf.StackWalker.StackWalkerConsumer;
-import de.geolykt.starloader.deobf.remapper.ConflicitingMappingException;
-import de.geolykt.starloader.deobf.remapper.Remapper;
-import de.geolykt.starloader.deobf.stack.source.AbstractSource;
-import de.geolykt.starloader.deobf.stack.source.FieldSource;
+import org.stianloader.deobf.LIFOQueue;
+import org.stianloader.deobf.MethodReference;
+import org.stianloader.deobf.StackElement;
+import org.stianloader.deobf.StackWalker;
+import org.stianloader.deobf.StackWalker.StackWalkerConsumer;
+import org.stianloader.deobf.stack.source.AbstractSource;
+import org.stianloader.deobf.stack.source.FieldSource;
+import org.stianloader.remapper.MappingSink;
+import org.stianloader.remapper.MemberRef;
 
 /**
  * Automatic specialised deobfuscation for galimulator
@@ -122,7 +121,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
     @NotNull
     private final Map<String, ClassNode> name2Node = new HashMap<>();
     private final List<ClassNode> nodes;
-    private final Remapper remapper;
+    @NotNull
+    private final MappingSink sink;
     @NotNull
     private final Map<String, String> settingsTypeMemberNames = new HashMap<>();
 
@@ -131,11 +131,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
     @Nullable
     private String spaceLogicalTickMethodName = null;
 
-    public Autodeobf502(List<ClassNode> nodes, Remapper remapper) {
+    public Autodeobf502(List<ClassNode> nodes, @NotNull MappingSink sink) {
         this.nodes = nodes;
-        this.remapper = remapper;
+        this.sink = sink;
+
         for (ClassNode node : nodes) {
-            name2Node.put(node.name, node);
+            this.name2Node.put(node.name, node);
         }
     }
 
@@ -403,7 +404,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         return false;
     }
 
-    public void remapActorClasses(Writer mappingsStream) throws IOException {
+    public void remapActorClasses() {
         ClassNode spaceNode = name2Node.get(SPACE_CLASS);
         if (spaceNode == null) {
             throw new IllegalStateException(SPACE_CLASS + " not present.");
@@ -432,8 +433,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     isSpawnActorMethod = true;
                     spawnActorMethod = method.name;
                     extendedBuildActorCall = insn;
-                    remapClass(mappingsStream, methodInsn.owner, EMPIRE_EXTENSION_CLASS);
-                    remapMethod(mappingsStream, SPACE_CLASS, method.name, "spawnActor", "(L" + STAR_CLASS + ";)L" + ACTOR_CLASS + ";");
+                    remapClass(methodInsn.owner, EMPIRE_EXTENSION_CLASS);
+                    remapMethod(SPACE_CLASS, method.name, "spawnActor", "(L" + STAR_CLASS + ";)L" + ACTOR_CLASS + ";");
                     break;
                 }
                 if (isSpawnActorMethod) {
@@ -443,7 +444,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!methodInsn.owner.equals(STAR_CLASS) || !methodInsn.desc.equals("()L" + EMPIRE_CLASS + ";")) {
                                 throw new OutdatedDeobfuscatorException("Actor", "Star", "getOwningEmpire", "Unexpected nature method call");
                             }
-                            remapMethod(mappingsStream, STAR_CLASS, methodInsn.name, "getOwningEmpire", "()L" + EMPIRE_CLASS + ";");
+                            remapMethod(STAR_CLASS, methodInsn.name, "getOwningEmpire", "()L" + EMPIRE_CLASS + ";");
                             break;
                         }
                     }
@@ -464,7 +465,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!fieldInsn.desc.equals("Ljava/util/ArrayList;")) {
                         throw new OutdatedDeobfuscatorException("Actor", "Space", "actorSpawnPredicates", "Unexpected descriptor");
                     }
-                    remapField(mappingsStream, SPACE_CLASS, fieldInsn.name, "actorSpawnPredicates", "Ljava/util/ArrayList;");
+                    remapField(SPACE_CLASS, fieldInsn.name, "actorSpawnPredicates", "Ljava/util/ArrayList;");
                     while (nextInsn != null && nextInsn.getOpcode() != Opcodes.INVOKESTATIC) {
                         nextInsn = nextInsn.getNext();
                     }
@@ -475,7 +476,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!methodInsn.owner.equals(SPACE_CLASS) || !methodInsn.desc.equals("()V")) {
                         throw new OutdatedDeobfuscatorException("Actor", "Space", "initializeActorSpawnPredicates", "Method call does not have the expected owner or descriptor");
                     }
-                    remapMethod(mappingsStream, SPACE_CLASS, methodInsn.name, "initializeActorSpawnPredicates", "()V");
+                    remapMethod(SPACE_CLASS, methodInsn.name, "initializeActorSpawnPredicates", "()V");
                     initializeActorSpawnPredicatesMethod = methodInsn.name;
                 }
             }
@@ -511,7 +512,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Actor", ACTOR_SPAWNING_PREDICATE_CLASS, "*", "Unresolved");
         }
 
-        remapClass(mappingsStream, actorSpawnPredicateClass, ACTOR_SPAWNING_PREDICATE_CLASS);
+        remapClass(actorSpawnPredicateClass, ACTOR_SPAWNING_PREDICATE_CLASS);
         ClassNode actorSpawnPredicateNode = name2Node.get(actorSpawnPredicateClass);
         if (actorSpawnPredicateNode == null) {
             throw new OutdatedDeobfuscatorException("Actor", ACTOR_SPAWNING_PREDICATE_CLASS, "*", "Node unresolved");
@@ -537,25 +538,25 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 // We are going to cheat and just base our guess on the descriptor of the field.
                 // In case this does not work due to some future change the deobfuscator internals are going to crash anyways
                 if (field.desc.equals("F")) {
-                    remapField(mappingsStream, actorSpawnPredicateClass, field.name, "spawningChance", "F");
+                    remapField(actorSpawnPredicateClass, field.name, "spawningChance", "F");
                     if (spawningChance) {
                         throw new OutdatedDeobfuscatorException("Actor", ACTOR_SPAWNING_PREDICATE_CLASS, "spawningChance", "Collision");
                     }
                     spawningChance = true;
                 } else if (field.desc.equals("L" + RELIGION_CLASS + ";")) {
-                    remapField(mappingsStream, actorSpawnPredicateClass, field.name, "religionRequirement", "L" + RELIGION_CLASS + ";");
+                    remapField(actorSpawnPredicateClass, field.name, "religionRequirement", "L" + RELIGION_CLASS + ";");
                     if (religionRequirement) {
                         throw new OutdatedDeobfuscatorException("Actor", ACTOR_SPAWNING_PREDICATE_CLASS, "religionRequirement", "Collision");
                     }
                     religionRequirement = true;
                 } else if (field.desc.equals("L" + ACTOR_CREATOR_CLASS + ";"))  {
-                    remapField(mappingsStream, actorSpawnPredicateClass, field.name, "actorFactory", "L" + ACTOR_CREATOR_CLASS + ";");
+                    remapField(actorSpawnPredicateClass, field.name, "actorFactory", "L" + ACTOR_CREATOR_CLASS + ";");
                     if (actorFactory) {
                         throw new OutdatedDeobfuscatorException("Actor", ACTOR_SPAWNING_PREDICATE_CLASS, "actorFactory", "Collision");
                     }
                     actorFactory = true;
                 } else if (field.desc.equals("Ljava/util/List;")) {
-                    remapField(mappingsStream, actorSpawnPredicateClass, field.name, "specialRequirements", "Ljava/util/List;");
+                    remapField(actorSpawnPredicateClass, field.name, "specialRequirements", "Ljava/util/List;");
                     if (specialRequirements) {
                         throw new OutdatedDeobfuscatorException("Actor", ACTOR_SPAWNING_PREDICATE_CLASS, "specialRequirements", "Collision");
                     }
@@ -577,7 +578,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (testMethodFound) {
                         throw new OutdatedDeobfuscatorException("Actor", ACTOR_SPAWNING_PREDICATE_CLASS, "test", "Collision");
                     }
-                    remapMethod(mappingsStream, actorSpawnPredicateClass, method.name, "test", "(L" + STAR_CLASS + ";)Z");
+                    remapMethod(actorSpawnPredicateClass, method.name, "test", "(L" + STAR_CLASS + ";)Z");
                     testMethodFound = true;
                 } else if (method.name.equals("<init>")
                         && method.desc.equals("(L" + ACTOR_CREATOR_CLASS + ";FLjava/util/List;L" + RELIGION_CLASS + ";)V")) {
@@ -614,25 +615,20 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if  (landmarkManagerClass == null) {
             throw new OutdatedDeobfuscatorException("Guides", LANDMARK_MANAGER_CLASS, "*", "Unresolved");
         }
-        remapClass(mappingsStream, landmarkManagerClass, LANDMARK_MANAGER_CLASS);
-        remapMethod(mappingsStream, landmarkManagerClass, regenerateLandmarksMethod, "regenerateLandmarks", "()V");
+        remapClass(landmarkManagerClass, LANDMARK_MANAGER_CLASS);
+        remapMethod(landmarkManagerClass, regenerateLandmarksMethod, "regenerateLandmarks", "()V");
     }
 
-    private void remapClass(Writer mappingsOut, @NotNull String oldName, @NotNull String newName) throws IOException {
-        remapper.remapClassName(oldName, newName);
-        mappingsOut.write("CLASS ");
-        mappingsOut.write(oldName);
-        mappingsOut.write(' ');
-        mappingsOut.write(newName);
-        mappingsOut.write('\n');
+    private void remapClass(@NotNull String oldName, @NotNull String newName) {
+        this.sink.remapClass(oldName, newName);
     }
 
-    protected void remapDialogClasses(Writer mappingsStream, final @NotNull String settingsDialogClass) throws IOException {
+    protected void remapDialogClasses(final @NotNull String settingsDialogClass) {
         if (settingsTypeMemberNames.isEmpty()) {
             resolveEnumMemberNames(SETTINGS_TYPE_CLASS, settingsTypeMemberNames);
         }
 
-        remapClass(mappingsStream, settingsDialogClass, SETTINGS_DIALOG_CLASS);
+        remapClass(settingsDialogClass, SETTINGS_DIALOG_CLASS);
         ClassNode settingsDialog = name2Node.get(settingsDialogClass);
         if (settingsDialog == null) {
             throw new OutdatedDeobfuscatorException("Dialog", SETTINGS_DIALOG_CLASS, "*");
@@ -640,7 +636,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (settingsDialog.interfaces.size() != 1) {
             throw new OutdatedDeobfuscatorException("Dialog", SETTINGS_DIALOG_CLASS, "*", "unexpected amount of interfaces");
         }
-        remapClass(mappingsStream, settingsDialog.interfaces.get(0), DIALOG_INTERFACE);
+        remapClass(settingsDialog.interfaces.get(0), DIALOG_INTERFACE);
 
         String blacklistButtonClass = null;
         String dialogButtonClass = null;
@@ -666,7 +662,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             }
                             blacklistButtonClass = methodInsn.owner;
 
-                            remapClass(mappingsStream, blacklistButtonClass, SETTINGS_DIALOG_BLACKLIST_BUTTON_CLASS);
+                            remapClass(blacklistButtonClass, SETTINGS_DIALOG_BLACKLIST_BUTTON_CLASS);
                             ClassNode blacklistButton = name2Node.get(blacklistButtonClass);
                             if (blacklistButton == null) {
                                 throw new OutdatedDeobfuscatorException("Dialog", SETTINGS_DIALOG_BLACKLIST_BUTTON_CLASS, "*", "Unresolved node");
@@ -674,7 +670,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             assignAsAnonymousClass(settingsDialog, method, blacklistButtonClass);
 
                             dialogButtonClass = blacklistButton.superName;
-                            remapClass(mappingsStream, dialogButtonClass, DIALOG_BUTTON_CLASS);
+                            remapClass(dialogButtonClass, DIALOG_BUTTON_CLASS);
 
                             ClassNode dialogButton = name2Node.get(dialogButtonClass);
                             if (dialogButton == null) {
@@ -684,7 +680,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 throw new OutdatedDeobfuscatorException("Dialog", DIALOG_BUTTON_CLASS, "*", "Unexpected amount of interfaces");
                             }
                             dialogComponentInterface = dialogButton.interfaces.get(0);
-                            remapClass(mappingsStream, dialogComponentInterface, DIALOG_COMPONENT_INTERFACE);
+                            remapClass(dialogComponentInterface, DIALOG_COMPONENT_INTERFACE);
 
                             int packageNameLength = dialogButtonClass.lastIndexOf('/') + 1;
                             dialogPackage = dialogButtonClass.substring(0, packageNameLength);
@@ -761,8 +757,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!getTypeInsn.desc.equals("L" + SETTINGS_TYPE_CLASS + ";")) {
                                 throw new OutdatedDeobfuscatorException("Dialog", USER_SETTING_ENTRY_CLASS, "type", "Unexpected descriptor");
                             }
-                            remapField(mappingsStream, getTypeInsn.owner, getTypeInsn.name, "type", "L" + SETTINGS_TYPE_CLASS + ";");
-                            remapClass(mappingsStream, getTypeInsn.owner, USER_SETTING_ENTRY_CLASS);
+                            remapField(getTypeInsn.owner, getTypeInsn.name, "type", "L" + SETTINGS_TYPE_CLASS + ";");
+                            remapClass(getTypeInsn.owner, USER_SETTING_ENTRY_CLASS);
 
                             AbstractInsnNode nextInsn = fieldInsn.getNext();
                             while (nextInsn != null && nextInsn.getOpcode() != Opcodes.NEW) {
@@ -774,14 +770,14 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             }
                             TypeInsnNode newInsn = (TypeInsnNode) nextInsn;
                             String settingsCheckbox = newInsn.desc;
-                            remapClass(mappingsStream, settingsCheckbox, SETTINGS_DIALOG_CHECKBOX_CLASS);
+                            remapClass(settingsCheckbox, SETTINGS_DIALOG_CHECKBOX_CLASS);
 
                             ClassNode settingsCheckboxNode = name2Node.get(settingsCheckbox);
                             if (settingsCheckboxNode == null) {
                                 throw new OutdatedDeobfuscatorException("Dialog", SETTINGS_DIALOG_CHECKBOX_CLASS, "*", "Unresolved node");
                             }
                             labeledCheckboxComponent = Objects.requireNonNull(settingsCheckboxNode.superName, settingsCheckboxNode.name + " without superclass");
-                            remapClass(mappingsStream, labeledCheckboxComponent, LABELED_CHECKBOX_COMPONENT);
+                            remapClass(labeledCheckboxComponent, LABELED_CHECKBOX_COMPONENT);
 
                             assignAsAnonymousClass(settingsDialog, method, settingsCheckbox);
                         } else if (fieldInsn.owner.equals(SETTINGS_TYPE_CLASS)
@@ -805,8 +801,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (labeledStringChooserComponent == null) {
                                 throw new IllegalStateException(stringChooserSubclassNode.name + " without superclass");
                             }
-                            remapClass(mappingsStream, labeledStringChooserComponent, LABELED_STRING_CHOOSER_COMPONENT);
-                            remapClass(mappingsStream, newInsn.desc, SETTINGS_DIALOG_STRING_CHOOSER_CLASS);
+                            remapClass(labeledStringChooserComponent, LABELED_STRING_CHOOSER_COMPONENT);
+                            remapClass(newInsn.desc, SETTINGS_DIALOG_STRING_CHOOSER_CLASS);
                             assignAsAnonymousClass(settingsDialog, method, newInsn.desc);
                         }
                     }
@@ -836,18 +832,15 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         forbiddenClasses.add(dialogComponentInterface);
         forbiddenClasses.add(labeledCheckboxComponent);
         forbiddenClasses.add(labeledStringChooserComponent);
-        mappingsStream.write("# Begin dialog package relocation\n");
         int packageNameLength = dialogPackage.length();
         for (ClassNode node : nodes) {
             if (node.name.startsWith(dialogPackage) && !forbiddenClasses.contains(node.name)) {
-                remapClass(mappingsStream, node.name, DIALOG_PACKAGE + node.name.substring(packageNameLength));
+                remapClass(node.name, DIALOG_PACKAGE + node.name.substring(packageNameLength));
             }
         }
-        mappingsStream.write("# End dialog package relocation\n");
-
         for (ClassNode node : nodes) {
             if (isInstanceofClass(node, dialogButtonClass)) {
-                remapMethod(mappingsStream, node.name, dialogButtonOnTouchMethod, "onTouch", "()V");
+                remapMethod(node.name, dialogButtonOnTouchMethod, "onTouch", "()V");
             }
         }
     }
@@ -859,7 +852,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
      * @param mappingsStream The stream to write the mapping to
      * @throws IOException If some generic IO Exception occurred (most likely because it failed writing to the mappings stream)
      */
-    public void remapEmpireClass(Writer mappingsStream) throws IOException {
+    public void remapEmpireClass() {
         if (enumSettingsMemberNames.isEmpty()) {
             resolveEnumMemberNames(ENUM_SETTINGS_CLASS, enumSettingsMemberNames);
         }
@@ -1033,12 +1026,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("(L" + EMPIRE_CLASS + ";)Z")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "hasContact", "Invalid owner or descriptor");
                     }
-                    remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "hasContact", "(L" + EMPIRE_CLASS + ";)Z");
+                    remapMethod(EMPIRE_CLASS, methodInsn.name, "hasContact", "(L" + EMPIRE_CLASS + ";)Z");
                     methodInsn = getNext(ldcInsn, Opcodes.INVOKEVIRTUAL);
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("()L" + EMPIRE_CLASS + ";")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "getMaster", "Invalid owner or descriptor");
                     }
-                    remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "getMaster", "()L" + EMPIRE_CLASS + ";");
+                    remapMethod(EMPIRE_CLASS, methodInsn.name, "getMaster", "()L" + EMPIRE_CLASS + ";");
                     do {
                         ldcInsn = getNext(ldcInsn, Opcodes.LDC);
                     } while (!ldcInsn.cst.equals("ALLIED"));
@@ -1046,12 +1039,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("(L" + EMPIRE_CLASS + ";)Z")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "isAllied", "Invalid owner or descriptor");
                     }
-                    remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "isAllied", "(L" + EMPIRE_CLASS + ";)Z");
+                    remapMethod(EMPIRE_CLASS, methodInsn.name, "isAllied", "(L" + EMPIRE_CLASS + ";)Z");
                     methodInsn = getNext(ldcInsn, Opcodes.INVOKEVIRTUAL);
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("(L" + EMPIRE_CLASS + ";)Z")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "isAtPeace", "Invalid owner or descriptor");
                     }
-                    remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "isAtPeace", "(L" + EMPIRE_CLASS + ";)Z");
+                    remapMethod(EMPIRE_CLASS, methodInsn.name, "isAtPeace", "(L" + EMPIRE_CLASS + ";)Z");
                 }
             } else if (method.desc.equals("(L" + EMPIRE_CLASS + ";)V")) {
                 AbstractInsnNode insn = method.instructions.getFirst();
@@ -1096,13 +1089,13 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Empire", "Empire", "vassalize", "Unresolved");
         }
 
-        remapField(mappingsStream, EMPIRE_CLASS, recentlyLostStarsField, "recentlyLostStars", "Ljava/util/Deque;");
-        remapField(mappingsStream, EMPIRE_CLASS, beaconsField, "beacons", "Ljava/util/ArrayList;");
-        remapField(mappingsStream, EMPIRE_CLASS, allianceField, "alliance", "L" + ALLIANCE_CLASS + ";");
-        remapMethod(mappingsStream, EMPIRE_CLASS, getAllianceMethod, "getAlliance", "()L" + ALLIANCE_CLASS + ";");
-        remapMethod(mappingsStream, EMPIRE_CLASS, setAllianceMethod, "setAlliance", "(L" + ALLIANCE_CLASS + ";)V");
-        remapMethod(mappingsStream, EMPIRE_CLASS, getRelationsMethod, "getRelations", "(L" + EMPIRE_CLASS + ";)Ljava/lang/String;");
-        remapMethod(mappingsStream, EMPIRE_CLASS, vassalizeMethod, "vassalize", "(L" + EMPIRE_CLASS + ";)V");
+        remapField(EMPIRE_CLASS, recentlyLostStarsField, "recentlyLostStars", "Ljava/util/Deque;");
+        remapField(EMPIRE_CLASS, beaconsField, "beacons", "Ljava/util/ArrayList;");
+        remapField(EMPIRE_CLASS, allianceField, "alliance", "L" + ALLIANCE_CLASS + ";");
+        remapMethod(EMPIRE_CLASS, getAllianceMethod, "getAlliance", "()L" + ALLIANCE_CLASS + ";");
+        remapMethod(EMPIRE_CLASS, setAllianceMethod, "setAlliance", "(L" + ALLIANCE_CLASS + ";)V");
+        remapMethod(EMPIRE_CLASS, getRelationsMethod, "getRelations", "(L" + EMPIRE_CLASS + ";)Ljava/lang/String;");
+        remapMethod(EMPIRE_CLASS, vassalizeMethod, "vassalize", "(L" + EMPIRE_CLASS + ";)V");
 
         String flagOwnerInterface = null;
         for (String itf : empireNode.interfaces) {
@@ -1125,16 +1118,16 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException(FLAG_OWNER_INTERFACE, "Unresolved");
         }
 
-        remapClass(mappingsStream, flagOwnerInterface, FLAG_OWNER_INTERFACE);
+        remapClass(flagOwnerInterface, FLAG_OWNER_INTERFACE);
         for (ClassNode node : nodes) {
             if (node.interfaces.contains(flagOwnerInterface)) {
-                remapMethod(mappingsStream, node.name, getFlagItemsMethod, "getFlagItems", "()Ljava/util/Vector;");
+                remapMethod(node.name, getFlagItemsMethod, "getFlagItems", "()Ljava/util/Vector;");
             }
         }
-        remapMethod(mappingsStream, flagOwnerInterface, getFlagItemsMethod, "getFlagItems", "()Ljava/util/Vector;");
+        remapMethod(flagOwnerInterface, getFlagItemsMethod, "getFlagItems", "()Ljava/util/Vector;");
 
-        remapMethod(mappingsStream, EMPIRE_CLASS, getShipCapacityMethod, "getCurrentShipCapacity", "()D");
-        remapMethod(mappingsStream, EMPIRE_CLASS, tickEmpireMethod, "tickEmpire", "()V");
+        remapMethod(EMPIRE_CLASS, getShipCapacityMethod, "getCurrentShipCapacity", "()D");
+        remapMethod(EMPIRE_CLASS, tickEmpireMethod, "tickEmpire", "()V");
 
         String internalSessionRandomField = null;
 
@@ -1150,7 +1143,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (internalSessionRandomField == null) {
             throw new OutdatedDeobfuscatorException("Empire", "Empire", "internalSessionRandom", "Unresolved");
         }
-        remapField(mappingsStream, EMPIRE_CLASS, internalSessionRandomField, "internalSessionRandom", "Ljava/util/Random;");
+        remapField(EMPIRE_CLASS, internalSessionRandomField, "internalSessionRandom", "Ljava/util/Random;");
 
         String starTickMethod = null;
         String canBeVassalizedByMethod = null;
@@ -1173,24 +1166,24 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!methodInsn.owner.equals("snoddasmannen/galimulator/relationships/LinearDropRelMod")) {
                         throw new OutdatedDeobfuscatorException("Empire", "DiploymacyActor", "*", "Unexpected owner");
                     }
-                    remapClass(mappingsStream, methodInsn.desc.substring(2, methodInsn.desc.indexOf(';')), BASE_PACKAGE + "relationships/DiploymacyActor");
+                    remapClass(methodInsn.desc.substring(2, methodInsn.desc.indexOf(';')), BASE_PACKAGE + "relationships/DiploymacyActor");
                     methodInsn = getNext(methodInsn, Opcodes.INVOKEVIRTUAL);
                     if (!methodInsn.owner.equals("snoddasmannen/galimulator/relationships/RelManager")) {
                         throw new OutdatedDeobfuscatorException("Empire", "DiploymacyActor", "addModifier", "Unexpected owner");
                     }
-                    remapMethod(mappingsStream, "snoddasmannen/galimulator/relationships/RelManager", methodInsn.name, "addModifier", methodInsn.desc);
+                    remapMethod("snoddasmannen/galimulator/relationships/RelManager", methodInsn.name, "addModifier", methodInsn.desc);
                     methodInsn = getNext(getNext(methodInsn, Opcodes.INVOKEVIRTUAL), Opcodes.INVOKEVIRTUAL);
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("(L" + EMPIRE_CLASS + ";)Z")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "canBeVassalizedBy", "Unexpected owner or descriptor");
                     }
                     canBeVassalizedByMethod = methodInsn.name;
-                    remapMethod(mappingsStream, EMPIRE_CLASS, canBeVassalizedByMethod, "canBeVassalizedBy", "(L" + EMPIRE_CLASS + ";)Z");
+                    remapMethod(EMPIRE_CLASS, canBeVassalizedByMethod, "canBeVassalizedBy", "(L" + EMPIRE_CLASS + ";)Z");
                     methodInsn = getNext(getNext(methodInsn, Opcodes.INVOKEVIRTUAL), Opcodes.INVOKEVIRTUAL);
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("(L" + EMPIRE_CLASS + ";)Z")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "canVassalize", "Unexpected owner or descriptor");
                     }
                     canVassalizeMethod = methodInsn.name;
-                    remapMethod(mappingsStream, EMPIRE_CLASS, canVassalizeMethod, "canVassalize", "(L" + EMPIRE_CLASS + ";)Z");
+                    remapMethod(EMPIRE_CLASS, canVassalizeMethod, "canVassalize", "(L" + EMPIRE_CLASS + ";)Z");
                 }
             }
         }
@@ -1206,12 +1199,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("()Z")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "isNotDegenerating", "Unexpected owner or descriptor");
                     }
-                    remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "isNotDegenerating", "()Z");
+                    remapMethod(EMPIRE_CLASS, methodInsn.name, "isNotDegenerating", "()Z");
                     methodInsn = getNext(methodInsn, Opcodes.INVOKEVIRTUAL);
                     if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("()Z")) {
                         throw new OutdatedDeobfuscatorException("Empire", EMPIRE_CLASS, "isAvoidingAlliances", "Unexpected owner or descriptor");
                     }
-                    remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "isAvoidingAlliances", "()Z");
+                    remapMethod(EMPIRE_CLASS, methodInsn.name, "isAvoidingAlliances", "()Z");
                 }
             }
         }
@@ -1227,18 +1220,18 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new OutdatedDeobfuscatorException("Empire", MOTTO_GENERATOR_CLASS, "*", "Collision");
                         }
                         mottoGeneratorClass = node.name;
-                        remapClass(mappingsStream, node.name, MOTTO_GENERATOR_CLASS);
-                        remapMethod(mappingsStream, node.name, method.name, "initialize", method.desc);
+                        remapClass(node.name, MOTTO_GENERATOR_CLASS);
+                        remapMethod(node.name, method.name, "initialize", method.desc);
                         FieldInsnNode finsn = getNext(insn, Opcodes.PUTSTATIC);
                         if (!finsn.owner.equals(node.name) || !finsn.desc.equals("L" + WORDLIST_CLASS + ";")) {
                             throw new OutdatedDeobfuscatorException("Empire", MOTTO_GENERATOR_CLASS, "prepositions", "Unexpected owner or descriptor");
                         }
-                        remapField(mappingsStream, node.name, finsn.name, "prepositions", "L" + WORDLIST_CLASS + ";");
+                        remapField(node.name, finsn.name, "prepositions", "L" + WORDLIST_CLASS + ";");
                         finsn = getNext(finsn, Opcodes.PUTSTATIC);
                         if (!finsn.owner.equals(node.name) || !finsn.desc.equals("L" + WORDLIST_CLASS + ";")) {
                             throw new OutdatedDeobfuscatorException("Empire", MOTTO_GENERATOR_CLASS, "nouns", "Unexpected owner or descriptor");
                         }
-                        remapField(mappingsStream, node.name, finsn.name, "nouns", "L" + WORDLIST_CLASS + ";");
+                        remapField(node.name, finsn.name, "nouns", "L" + WORDLIST_CLASS + ";");
                         if (getNextOrNull(finsn, Opcodes.PUTSTATIC) != null) {
                             throw new OutdatedDeobfuscatorException("Empire", MOTTO_GENERATOR_CLASS, "nouns", "Unexpected trailing PUTSTATIC call");
                         }
@@ -1254,23 +1247,23 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (candidate == null) {
                             throw new OutdatedDeobfuscatorException("Empire", MOTTO_GENERATOR_CLASS, "generateMotto", "Not found");
                         }
-                        remapMethod(mappingsStream, node.name, candidate.name, "generateMotto", "()Ljava/lang/String;");
+                        remapMethod(node.name, candidate.name, "generateMotto", "()Ljava/lang/String;");
                         insn = candidate.instructions.getFirst();
                         MethodInsnNode minsn = getNext(insn, Opcodes.INVOKEVIRTUAL);
                         if (!minsn.owner.equals(VANITY_HOLDER_CLASS) || !minsn.desc.equals("()Z")) {
                             throw new OutdatedDeobfuscatorException("Empire", VANITY_HOLDER_CLASS, "hasMotto", "Unexpected owner or descriptor");
                         }
-                        remapMethod(mappingsStream, VANITY_HOLDER_CLASS, minsn.name, "hasMotto", "()Z");
+                        remapMethod(VANITY_HOLDER_CLASS, minsn.name, "hasMotto", "()Z");
                         minsn = getNext(minsn, Opcodes.INVOKEVIRTUAL);
                         if (!minsn.owner.equals(VANITY_HOLDER_CLASS) || !minsn.desc.equals("()Ljava/lang/String;")) {
                             throw new OutdatedDeobfuscatorException("Empire", VANITY_HOLDER_CLASS, "getMotto", "Unexpected owner or descriptor");
                         }
-                        remapMethod(mappingsStream, VANITY_HOLDER_CLASS, minsn.name, "getMotto", "()Ljava/lang/String;");
+                        remapMethod(VANITY_HOLDER_CLASS, minsn.name, "getMotto", "()Ljava/lang/String;");
                         minsn = getNext(minsn, Opcodes.INVOKEVIRTUAL);
                         if (!minsn.owner.equals(WORDLIST_CLASS) || !minsn.desc.equals("()Ljava/lang/String;")) {
                             throw new OutdatedDeobfuscatorException("Empire", WORDLIST_CLASS, "getRandomWord", "Unexpected owner or descriptor");
                         }
-                        remapMethod(mappingsStream, WORDLIST_CLASS, minsn.name, "getRandomWord", "()Ljava/lang/String;");
+                        remapMethod(WORDLIST_CLASS, minsn.name, "getRandomWord", "()Ljava/lang/String;");
                         continue nodeloop;
                     }
                 }
@@ -1282,7 +1275,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         }
     }
 
-    public void remapEmploymentAgency(Writer mappingsStream) throws IOException {
+    public void remapEmploymentAgency() {
         ClassNode employmentAgency = name2Node.get(EMPLOYMENT_AGENCY_CLASS);
         ClassNode jobNode = name2Node.get(JOB_CLASS);
         if (employmentAgency == null) {
@@ -1304,7 +1297,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (employmentInstance == null) {
             throw new OutdatedDeobfuscatorException("EmploymentAgency", EMPLOYMENT_AGENCY_CLASS, "instance", "Not found");
         }
-        remapField(mappingsStream, EMPLOYMENT_AGENCY_CLASS, employmentInstance, "instance", "L" + EMPLOYMENT_AGENCY_CLASS + ";");
+        remapField(EMPLOYMENT_AGENCY_CLASS, employmentInstance, "instance", "L" + EMPLOYMENT_AGENCY_CLASS + ";");
 
         String setInstanceMethod = null;
         String getInstanceMethod = null;
@@ -1332,8 +1325,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("EmploymentAgency", EMPLOYMENT_AGENCY_CLASS, "getInstance", "Not found");
         }
 
-        remapMethod(mappingsStream, EMPLOYMENT_AGENCY_CLASS, setInstanceMethod, "setInstance", "(L" + EMPLOYMENT_AGENCY_CLASS + ";)V");
-        remapMethod(mappingsStream, EMPLOYMENT_AGENCY_CLASS, getInstanceMethod, "getInstance", "()L" + EMPLOYMENT_AGENCY_CLASS + ";");
+        remapMethod(EMPLOYMENT_AGENCY_CLASS, setInstanceMethod, "setInstance", "(L" + EMPLOYMENT_AGENCY_CLASS + ";)V");
+        remapMethod(EMPLOYMENT_AGENCY_CLASS, getInstanceMethod, "getInstance", "()L" + EMPLOYMENT_AGENCY_CLASS + ";");
 
         String tickJobMethod = null;
         String vacateJobMethod = null;
@@ -1396,9 +1389,9 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("EmploymentAgency", JOB_CLASS, "isVacated", "Not found");
         }
 
-        remapMethod(mappingsStream, JOB_CLASS, tickJobMethod, "tick", "()V");
-        remapMethod(mappingsStream, JOB_CLASS, vacateJobMethod, "vacate", "(Ljava/lang/String;)V");
-        remapMethod(mappingsStream, JOB_CLASS, isVacatedMethod, "isVacated", "()Z");
+        remapMethod(JOB_CLASS, tickJobMethod, "tick", "()V");
+        remapMethod(JOB_CLASS, vacateJobMethod, "vacate", "(Ljava/lang/String;)V");
+        remapMethod(JOB_CLASS, isVacatedMethod, "isVacated", "()Z");
 
         String getCurrentHolder = null;
 
@@ -1424,7 +1417,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("EmploymentAgency", JOB_CLASS, "getCurrentHolder", "Not found");
         }
 
-        remapMethod(mappingsStream, JOB_CLASS, getCurrentHolder, "getCurrentHolder", "()L" + PERSON_CLASS + ";");
+        remapMethod(JOB_CLASS, getCurrentHolder, "getCurrentHolder", "()L" + PERSON_CLASS + ";");
 
         String currentHolder = null;
         String previousHolder = null;
@@ -1466,8 +1459,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("EmploymentAgency", JOB_CLASS, "previousHolder", "Not found");
         }
 
-        remapField(mappingsStream, JOB_CLASS, currentHolder, "currentHolder", "L" + PERSON_CLASS + ";");
-        remapField(mappingsStream, JOB_CLASS, previousHolder, "previousHolder", "L" + PERSON_CLASS + ";");
+        remapField(JOB_CLASS, currentHolder, "currentHolder", "L" + PERSON_CLASS + ";");
+        remapField(JOB_CLASS, previousHolder, "previousHolder", "L" + PERSON_CLASS + ";");
 
         String getPreviousHolder = null;
 
@@ -1485,7 +1478,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("EmploymentAgency", JOB_CLASS, "getPreviousHolder", "Not found");
         }
 
-        remapMethod(mappingsStream, JOB_CLASS, getPreviousHolder, "getPreviousHolder", "()L" + PERSON_CLASS + ";");
+        remapMethod(JOB_CLASS, getPreviousHolder, "getPreviousHolder", "()L" + PERSON_CLASS + ";");
 
         String tickAgencyMethod = null;
 
@@ -1510,13 +1503,11 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("EmploymentAgency", EMPLOYMENT_AGENCY_CLASS, "tick", "Instructions exhausted");
         }
 
-        remapMethod(mappingsStream, EMPLOYMENT_AGENCY_CLASS, tickAgencyMethod, "tick", "()V");
+        remapMethod(EMPLOYMENT_AGENCY_CLASS, tickAgencyMethod, "tick", "()V");
     }
 
-    private void remapField(Writer mappingsOut, String owner, String oldName, String newName, String desc) throws IOException {
-        remapper.remapField(owner, desc, oldName, newName);
-        // Format: FIELD owner descriptor originalName newName
-        mappingsOut.write("FIELD " + owner + " " + desc + " " + oldName + " " +  newName + "\n");
+    private void remapField(String owner, String oldName, String newName, String desc) {
+        this.sink.remapMember(new MemberRef(owner, oldName, desc), newName);
     }
 
     /**
@@ -1525,7 +1516,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
      * @param mappingsStream Where to save the mapped values to. The stream will be in the tiny format
      * @throws IOException Exception that is raised during writes to the stream
      */
-    public void remapGalaxyGeneration(Writer mappingsStream) throws IOException {
+    public void remapGalaxyGeneration() {
         ClassNode space = name2Node.get(SPACE_CLASS);
         if (space == null) {
             throw new IllegalStateException("Class not present: " + SPACE_CLASS);
@@ -1558,7 +1549,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!startDebuggingSectionInsn.owner.equals(DEBUG_CLASS) || !startDebuggingSectionInsn.desc.equals("(Ljava/lang/String;)V")) {
                     throw new OutdatedDeobfuscatorException("GalaxyGen", DEBUG_CLASS, "startDebuggingSection", "Unexpected specifics about method call");
                 }
-                remapMethod(mappingsStream, DEBUG_CLASS, startDebuggingSectionInsn.name, "startDebuggingSection", "(Ljava/lang/String;)V");
+                remapMethod(DEBUG_CLASS, startDebuggingSectionInsn.name, "startDebuggingSection", "(Ljava/lang/String;)V");
 
                 while (insn != null && insn.getOpcode() != Opcodes.LDC) {
                     insn = insn.getNext();
@@ -1571,7 +1562,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!setBackgroundTaskDescInsn.desc.equals("(Ljava/lang/String;)V")) {
                     throw new OutdatedDeobfuscatorException("GalaxyGen", SPACE_CLASS, "setBackgroundTaskDescription", "Unexpected descriptor");
                 }
-                remapMethod(mappingsStream, SPACE_CLASS, setBackgroundTaskDescInsn.name, "setBackgroundTaskDescription", "(Ljava/lang/String;)V");
+                remapMethod(SPACE_CLASS, setBackgroundTaskDescInsn.name, "setBackgroundTaskDescription", "(Ljava/lang/String;)V");
                 setBackgroundTaskDescriptionMethod = setBackgroundTaskDescInsn.name;
             }
         }
@@ -1580,7 +1571,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("GalaxyGen", SPACE_CLASS, "generateGalaxy", "Unresolved");
         }
 
-        remapMethod(mappingsStream, SPACE_CLASS, generateGalaxyMethod, "generateGalaxy", "(IL" + MAPDATA_CLASS + ";)V");
+        remapMethod(SPACE_CLASS, generateGalaxyMethod, "generateGalaxy", "(IL" + MAPDATA_CLASS + ";)V");
 
         String backgroundTaskDescription = null;
 
@@ -1612,10 +1603,10 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (backgroundTaskDescription == null) {
             throw new OutdatedDeobfuscatorException("GalaxyGen", SPACE_CLASS, "backgroundTaskDescription", "Unresolved");
         }
-        remapField(mappingsStream, SPACE_CLASS, backgroundTaskDescription, "backgroundTaskDescription", "Ljava/lang/String;");
+        remapField(SPACE_CLASS, backgroundTaskDescription, "backgroundTaskDescription", "Ljava/lang/String;");
     }
 
-    public void remapGenerators(Writer mappingsStream) throws IOException {
+    public void remapGenerators() {
 
         ClassNode bitmapGenClass = name2Node.get(BITMAP_STAR_GENERATOR_CLASS);
         if (bitmapGenClass == null) {
@@ -1865,10 +1856,10 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Generator", STAR_GENERATOR_INTERFACE, "prepareGenerator", "Unresolved");
         }
 
-        remapMethod(mappingsStream, SPACE_CLASS, spaceGetMaxXMethod, "getMaxX", "()F");
-        remapMethod(mappingsStream, SPACE_CLASS, spaceGetMaxYMethod, "getMaxY", "()F");
-        remapField(mappingsStream, SPACE_CLASS, spaceMaxXCacheField, "maxXCache", "F");
-        remapField(mappingsStream, SPACE_CLASS, spaceMaxYCacheField, "maxYCache", "F");
+        remapMethod(SPACE_CLASS, spaceGetMaxXMethod, "getMaxX", "()F");
+        remapMethod(SPACE_CLASS, spaceGetMaxYMethod, "getMaxY", "()F");
+        remapField(SPACE_CLASS, spaceMaxXCacheField, "maxXCache", "F");
+        remapField(SPACE_CLASS, spaceMaxYCacheField, "maxYCache", "F");
 
         ClassNode fractalStarGenerator = name2Node.get(FRACTAL_STAR_GENERATOR_CLASS);
         if (fractalStarGenerator == null) {
@@ -1987,17 +1978,17 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
 
         for (ClassNode node : nodes) {
             if (isInstanceofInterface(node, starGeneratorClass)) {
-                remapMethod(mappingsStream, node.name, generateStarMethod, "generateStar", "()L" + STAR_CLASS + ";");
-                remapMethod(mappingsStream, node.name, getResourceListMethod, "getResources", "()Ljava/util/List;");
-                remapMethod(mappingsStream, node.name, getMaxXMethod, "getMaxX", "()F");
-                remapMethod(mappingsStream, node.name, getMaxYMethod, "getMaxY", "()F");
-                remapMethod(mappingsStream, node.name, prepareGeneratorMethod, "prepareGenerator", "()V");
-                remapMethod(mappingsStream, node.name, getEngravingTextMethod, "getEngravingText", "()Ljava/lang/String;");
-                remapMethod(mappingsStream, node.name, getSettingsDialogMethod, "getSettingsDialog", getSettingsDialogDesc);
-                remapMethod(mappingsStream, node.name, hasMovingStarsMethod, "hasMovingStars", "()Z");
-                remapMethod(mappingsStream, node.name, setupSettingsMethod, "setupSettings", "()V");
-                remapMethod(mappingsStream, node.name, onLoadMethod, "onLoad", "()V");
-                remapMethod(mappingsStream, node.name, getBackgroundTextureMethod, "getBackgroundTexture", "()Lcom/badlogic/gdx/graphics/Texture;");
+                remapMethod(node.name, generateStarMethod, "generateStar", "()L" + STAR_CLASS + ";");
+                remapMethod(node.name, getResourceListMethod, "getResources", "()Ljava/util/List;");
+                remapMethod(node.name, getMaxXMethod, "getMaxX", "()F");
+                remapMethod(node.name, getMaxYMethod, "getMaxY", "()F");
+                remapMethod(node.name, prepareGeneratorMethod, "prepareGenerator", "()V");
+                remapMethod(node.name, getEngravingTextMethod, "getEngravingText", "()Ljava/lang/String;");
+                remapMethod(node.name, getSettingsDialogMethod, "getSettingsDialog", getSettingsDialogDesc);
+                remapMethod(node.name, hasMovingStarsMethod, "hasMovingStars", "()Z");
+                remapMethod(node.name, setupSettingsMethod, "setupSettings", "()V");
+                remapMethod(node.name, onLoadMethod, "onLoad", "()V");
+                remapMethod(node.name, getBackgroundTextureMethod, "getBackgroundTexture", "()Lcom/badlogic/gdx/graphics/Texture;");
             }
         }
     }
@@ -2006,7 +1997,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
      * Remaps Hotkey/Keybind-related classes.
      * This method does not need to be run after intermediary.
      */
-    public void remapHotkeys(Writer mappingsStream) throws IOException {
+    public void remapHotkeys() {
         ClassNode mainClass = this.name2Node.get(MAIN_ENTRYPOINT_CLASS);
         if (mainClass == null) {
             throw new OutdatedDeobfuscatorException("Hotkey", "Cannot find " + MAIN_ENTRYPOINT_CLASS);
@@ -2032,7 +2023,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (extendsShortcut == null) {
             throw new OutdatedDeobfuscatorException("Hotkey", "Cannot find " + aShortcutClass);
         }
-        remapClass(mappingsStream, extendsShortcut.superName, BASE_PACKAGE + "Shortcut");
+        remapClass(extendsShortcut.superName, BASE_PACKAGE + "Shortcut");
 
         String aboutWidgetClass = null;
         String showShortcutListButtonClass = null;
@@ -2084,8 +2075,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Hotkey", SHOW_SHORTCUT_LIST_BUTTON_CLASS, "*", "Unresolved");
         }
 
-        remapClass(mappingsStream, aboutWidgetClass, ABOUT_WIDGET_CLASS);
-        remapClass(mappingsStream, showShortcutListButtonClass, SHOW_SHORTCUT_LIST_BUTTON_CLASS);
+        remapClass(aboutWidgetClass, ABOUT_WIDGET_CLASS);
+        remapClass(showShortcutListButtonClass, SHOW_SHORTCUT_LIST_BUTTON_CLASS);
 
         ClassNode showShortcutListButtonNode = this.name2Node.get(showShortcutListButtonClass);
         this.assignAsInnerClass(this.name2Node.get(aboutWidgetClass), showShortcutListButtonNode, SHOW_SHORTCUT_LIST_BUTTON_CLASS.substring(ABOUT_WIDGET_CLASS.length() + 1));
@@ -2107,10 +2098,10 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
 
         ClassNode shortcutListWidgetClass = this.name2Node.get(((TypeInsnNode) getNext(showShortcutListMethod.instructions.getFirst())).desc);
 
-        remapClass(mappingsStream, shortcutListWidgetClass.name, SHORTCUT_LIST_WIDGET_CLASS);
+        remapClass(shortcutListWidgetClass.name, SHORTCUT_LIST_WIDGET_CLASS);
     }
 
-    public void remapMapModes(Writer mappingsOut) throws IOException {
+    public void remapMapModes() {
         ClassNode mapModeNode = name2Node.get(MAP_MODE_CLASS);
         if (mapModeNode == null) {
             throw new OutdatedDeobfuscatorException("MapMode", MAP_MODE_CLASS, "*", "Cannot resolve node");
@@ -2124,7 +2115,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new OutdatedDeobfuscatorException("MapMode", MAP_MODE_CLASS, "currentMode", "Collision");
                 }
                 mapModeField = field.name;
-                remapField(mappingsOut, MAP_MODE_CLASS, mapModeField, "currentMode", "L" + MAP_MODE_ENUM_CLASS + ";");
+                remapField(MAP_MODE_CLASS, mapModeField, "currentMode", "L" + MAP_MODE_ENUM_CLASS + ";");
             }
         }
 
@@ -2143,20 +2134,20 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         throw new OutdatedDeobfuscatorException("MapMode", MAP_MODE_CLASS, "getCurrentMode", "Collision");
                     }
                     getMapModeMethod = method.name;
-                    remapMethod(mappingsOut, MAP_MODE_CLASS, getMapModeMethod, "getCurrentMode", "()L" + MAP_MODE_ENUM_CLASS + ";");
+                    remapMethod(MAP_MODE_CLASS, getMapModeMethod, "getCurrentMode", "()L" + MAP_MODE_ENUM_CLASS + ";");
                 }
             } else if (method.desc.equals("(L" + MAP_MODE_ENUM_CLASS + ";)V")) {
                 if (setMapModeMethod != null) {
                     throw new OutdatedDeobfuscatorException("MapMode", MAP_MODE_CLASS, "setCurrentMode", "Collision");
                 }
                 setMapModeMethod = method.name;
-                remapMethod(mappingsOut, MAP_MODE_CLASS, setMapModeMethod, "setCurrentMode", "(L" + MAP_MODE_ENUM_CLASS + ";)V");
+                remapMethod(MAP_MODE_CLASS, setMapModeMethod, "setCurrentMode", "(L" + MAP_MODE_ENUM_CLASS + ";)V");
             } else if (method.desc.equals("()V") && method.name.codePointAt(0) != '<') {
                 if (rotateMapModeMethod != null) {
                     throw new OutdatedDeobfuscatorException("MapMode", MAP_MODE_CLASS, "rotateCurrentMode", "Collision");
                 }
                 rotateMapModeMethod = method.name;
-                remapMethod(mappingsOut, MAP_MODE_CLASS, rotateMapModeMethod, "rotateCurrentMode", "()V");
+                remapMethod(MAP_MODE_CLASS, rotateMapModeMethod, "rotateCurrentMode", "()V");
             }
         }
 
@@ -2190,7 +2181,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 throw new OutdatedDeobfuscatorException("MapMode", STAR_CLASS, "renderRegion", "Collision");
                             }
                             renderRegionsMethod = method;
-                            remapMethod(mappingsOut, STAR_CLASS, method.name, "renderRegion", "()V");
+                            remapMethod(STAR_CLASS, method.name, "renderRegion", "()V");
                             break;
                         }
                     }
@@ -2244,11 +2235,11 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (starRenderingRegionField == null) {
                 throw new OutdatedDeobfuscatorException("MapMode", STAR_CLASS, "starRenderingRegion", "Unresolved");
             }
-            remapField(mappingsOut, STAR_CLASS, starRenderingRegionField, "starRenderingRegion", "L" + GDX_POLYGON_SPRITE + ";");
+            remapField(STAR_CLASS, starRenderingRegionField, "starRenderingRegion", "L" + GDX_POLYGON_SPRITE + ";");
         }
     }
 
-    private void remapMethod(Writer mappingsOut, String owner, String oldName, String newName, String desc) throws IOException {
+    private void remapMethod(String owner, String oldName, String newName, String desc) {
         if (oldName.equals(newName)) {
             throw new IllegalStateException("old name is equal to new name. Operation is a bit nonsensical");
         }
@@ -2258,20 +2249,15 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (desc == null) {
             throw new NullPointerException("desc is null");
         }
-        try {
-            this.remapper.remapMethod(owner, desc, oldName, newName);
-            // Format (for valid tiny files): METHOD owner desc srcName dstName
-            mappingsOut.write("METHOD " + owner + " " + desc + " " + oldName + " " +  newName + "\n");
-        } catch (ConflicitingMappingException e) {
-            try {
-                throw new RuntimeException("Old mapping: " + this.remapper.getRemappedClassName(owner) + "." + this.remapper.getRemappedMethodName(owner, oldName, desc) + this.remapper.getRemappedMethodDescriptor(desc, new StringBuilder()) + ". Proposed: " + this.remapper.getRemappedClassName(owner) + "." + newName + desc, e);
-            } catch (RuntimeException e2) {
-                e2.printStackTrace();
-            }
+
+        if (desc.charAt(0) != '(') {
+            throw new IllegalArgumentException("Descriptor is not a method descriptor: " + desc);
         }
+
+        this.sink.remapMember(new MemberRef(owner, oldName, desc), Objects.requireNonNull(newName));
     }
 
-    public void remapNoiseGenerators(Writer mappingsString) throws IOException {
+    public void remapNoiseGenerators() {
         ClassNode fractalStarGenerator = name2Node.get(FRACTAL_STAR_GENERATOR_CLASS);
         if (fractalStarGenerator == null) {
             throw new OutdatedDeobfuscatorException("Noise", FRACTAL_STAR_GENERATOR_CLASS, "*", "Node not present");
@@ -2360,12 +2346,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (perlinGeneratorClass == null) {
             throw new OutdatedDeobfuscatorException("Noise", PERLIN_NOISE_GENERATOR_CLASS, "*", "Unresolved");
         }
-        remapMethod(mappingsString, FRACTAL_STAR_GENERATOR_CLASS, simplexMethod, "generateSimplex", "()V");
-        remapMethod(mappingsString, FRACTAL_STAR_GENERATOR_CLASS, perlinMethod, "generatePerlin", "()V");
-        remapMethod(mappingsString, FRACTAL_STAR_GENERATOR_CLASS, offsetMethod, "generateOffset", "()V");
-        remapMethod(mappingsString, FRACTAL_STAR_GENERATOR_CLASS, generateMapMethod, "generateMap", "()V");
-        remapClass(mappingsString, perlinGeneratorClass, PERLIN_NOISE_GENERATOR_CLASS);
-        remapMethod(mappingsString, perlinGeneratorClass, getPerlinNoiseMethod, "generatePerlinNoise", "(III)[[F");
+        remapMethod(FRACTAL_STAR_GENERATOR_CLASS, simplexMethod, "generateSimplex", "()V");
+        remapMethod(FRACTAL_STAR_GENERATOR_CLASS, perlinMethod, "generatePerlin", "()V");
+        remapMethod(FRACTAL_STAR_GENERATOR_CLASS, offsetMethod, "generateOffset", "()V");
+        remapMethod(FRACTAL_STAR_GENERATOR_CLASS, generateMapMethod, "generateMap", "()V");
+        remapClass(perlinGeneratorClass, PERLIN_NOISE_GENERATOR_CLASS);
+        remapMethod(perlinGeneratorClass, getPerlinNoiseMethod, "generatePerlinNoise", "(III)[[F");
 
         ClassNode perlinGeneratorNode = name2Node.get(perlinGeneratorClass);
         if (perlinGeneratorNode == null) {
@@ -2390,7 +2376,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!firstInsn.desc.equals("(II)[[F")) {
                     throw new OutdatedDeobfuscatorException("Noise", PERLIN_NOISE_GENERATOR_CLASS, "generateWhiteNoise", "Unexpected descriptor");
                 }
-                remapMethod(mappingsString, perlinGeneratorClass, firstInsn.name, "generateWhiteNoise", "(II)[[F");
+                remapMethod(perlinGeneratorClass, firstInsn.name, "generateWhiteNoise", "(II)[[F");
 
                 insn = firstInsn.getNext();
                 while (insn != null && insn.getOpcode() != Opcodes.INVOKESTATIC) {
@@ -2403,7 +2389,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!secondInsn.desc.equals("([[FI)[[F")) {
                     throw new OutdatedDeobfuscatorException("Noise", PERLIN_NOISE_GENERATOR_CLASS, "generatePerlinNoise", "Unexpected descriptor");
                 }
-                remapMethod(mappingsString, perlinGeneratorClass, secondInsn.name, "generatePerlinNoise", "([[FI)[[F");
+                remapMethod(perlinGeneratorClass, secondInsn.name, "generatePerlinNoise", "([[FI)[[F");
 
                 method.parameters.clear();
                 method.parameters.add(new ParameterNode("width", Opcodes.ACC_FINAL));
@@ -2435,8 +2421,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         }
     }
 
-    public void remapPlayerMethods(Writer mappingsString) throws IOException {
-        ClassNode playerClass = name2Node.get(PLAYER_CLASS);
+    public void remapPlayerMethods() {
+        ClassNode playerClass = this.name2Node.get(PLAYER_CLASS);
         if (playerClass == null) {
             throw new IllegalStateException("The player class was not defined!");
         }
@@ -2448,7 +2434,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new IllegalStateException("Found two Player#getFlagship candidates.");
                 }
                 selectedFlagshipMethod = true;
-                remapMethod(mappingsString, PLAYER_CLASS, method.name, "getFlagship", "()Lsnoddasmannen/galimulator/actors/Flagship;");
+                remapMethod(PLAYER_CLASS, method.name, "getFlagship", "()Lsnoddasmannen/galimulator/actors/Flagship;");
             } else if (method.desc.equals("()I")) {
                 AbstractInsnNode insn = method.instructions.getFirst();
                 while (insn != null) {
@@ -2529,7 +2515,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new IllegalStateException("Guessed two Player#getScore methods, which is nonsensical");
                         }
                         selectedGetScoreMethod = true;
-                        remapMethod(mappingsString, PLAYER_CLASS, method.name, "getScore", "()I");
+                        remapMethod(PLAYER_CLASS, method.name, "getScore", "()I");
                         break;
                     }
                     insn = insn.getNext();
@@ -2538,7 +2524,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         }
     }
 
-    public void remapRendersystem(Writer mappingsStream) throws IOException {
+    public void remapRendersystem() {
         ClassNode renderCacheClass = null;
         Set<String> renderItemDescriptors = new HashSet<>();
         for (ClassNode node : nodes) {
@@ -2587,7 +2573,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 default:
                     throw new OutdatedDeobfuscatorException("RenderSystem", node.name, "*", "Unmapped descriptor: " + ctor.desc);
                 }
-                remapClass(mappingsStream, node.name, deobfuscatedName);
+                remapClass(node.name, deobfuscatedName);
             } else {
                 for (MethodNode method : node.methods) {
                     if ((method.access & Opcodes.ACC_SYNCHRONIZED) == 0) {
@@ -2599,7 +2585,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 throw new OutdatedDeobfuscatorException("RenderSystem", RENDER_CACHE_CLASS, "*", "Duplicates resolved");
                             }
                             renderCacheClass = node;
-                            remapMethod(mappingsStream, node.name, method.name, "pushItem", "(L" + RENDER_ITEM_CLASS + ";)V");
+                            remapMethod(node.name, method.name, "pushItem", "(L" + RENDER_ITEM_CLASS + ";)V");
                             break;
                         }
                     }
@@ -2610,7 +2596,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (renderCacheClass == null) {
             throw new OutdatedDeobfuscatorException("RenderSystem", RENDER_CACHE_CLASS, "*", "Not found");
         }
-        remapClass(mappingsStream, renderCacheClass.name, RENDER_CACHE_CLASS);
+        remapClass(renderCacheClass.name, RENDER_CACHE_CLASS);
 
         ClassNode spaceClass = name2Node.get(SPACE_CLASS);
         String drawToCacheMethod = null;
@@ -2625,7 +2611,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (drawToCacheMethod != null) {
                                 throw new OutdatedDeobfuscatorException("RenderSystem", SPACE_CLASS, "drawToCache", "Duplication");
                             }
-                            remapMethod(mappingsStream, SPACE_CLASS, method.name, "drawToCache", drawToCacheMethodDesc);
+                            remapMethod(SPACE_CLASS, method.name, "drawToCache", drawToCacheMethodDesc);
                             drawToCacheMethod = method.name;
                             break;
                         }
@@ -2657,7 +2643,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         continue;
                     }
 
-                    remapClass(mappingsStream, node.name, RENDER_CACHE_COLLECTOR_CLASS);
+                    remapClass(node.name, RENDER_CACHE_COLLECTOR_CLASS);
 
                     ClassNode galemulatorClass = null;
                     for (ClassNode node2 : nodes) {
@@ -2697,11 +2683,9 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
 
     /**
      * Remap the fields of the snoddasmannen/galimulator/Space class.
-     *
-     * @param mappingsStream Suggested remapper mappings are written to the writer in the tiny v1 format
      */
-    public void remapSpaceFields(Writer mappingsStream) throws IOException {
-        ClassNode space = name2Node.get(SPACE_CLASS);
+    public void remapSpaceFields() {
+        ClassNode space = this.name2Node.get(SPACE_CLASS);
         if (space == null) {
             throw new IllegalStateException("Class not present: " + SPACE_CLASS);
         }
@@ -2738,8 +2722,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             }
                             showToastMethod = methodInsn.name;
                             showScreenSizeResetHintMethod = method.name;
-                            remapMethod(mappingsStream, SPACE_CLASS, showToastMethod, "showToast", "(Ljava/lang/String;)V");
-                            remapMethod(mappingsStream, SPACE_CLASS, method.name, "showScreenSizeResetHint", "()V");
+                            remapMethod(SPACE_CLASS, showToastMethod, "showToast", "(Ljava/lang/String;)V");
+                            remapMethod(SPACE_CLASS, method.name, "showScreenSizeResetHint", "()V");
                         }
                     } else if (insn.getOpcode() == Opcodes.NEW) {
                         TypeInsnNode typeInsn = (TypeInsnNode) insn;
@@ -2824,7 +2808,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (destinationField.owner.equals(SPACE_CLASS)) {
                                 fieldRemaps.put(destinationField.name + ' ' + destinationField.desc, fieldInsn.name);
                             }
-                            remapField(mappingsStream, destinationField.owner, destinationField.name, fieldInsn.name, destinationField.desc);
+                            remapField(destinationField.owner, destinationField.name, fieldInsn.name, destinationField.desc);
                         }
                     }
                     insn = insn.getNext();
@@ -2841,7 +2825,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new OutdatedDeobfuscatorException("Space", "Space", "openInputDialog", "collision");
                         }
                         openInputDialogMethod = method.name;
-                        remapMethod(mappingsStream, SPACE_CLASS, openInputDialogMethod, "openInputDialog", SPACE_OPEN_INPUT_DIALOG_DESCRIPTOR);
+                        remapMethod(SPACE_CLASS, openInputDialogMethod, "openInputDialog", SPACE_OPEN_INPUT_DIALOG_DESCRIPTOR);
                         isMethod = true;
                     } else if (insn.getOpcode() == Opcodes.NEW && firstNewClass == null) {
                         firstNewClass = ((TypeInsnNode) insn).desc;
@@ -2863,7 +2847,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         throw new OutdatedDeobfuscatorException("Space", "Space", "addUnbufferedWidget", "unexpected descriptor");
                     }
                     addUnbufferedWidgetMethod = methodInsn.name;
-                    remapMethod(mappingsStream, SPACE_CLASS, method.name, "addUnbufferedWidget", "(L" + WIDGET_CLASS + ";)V");
+                    remapMethod(SPACE_CLASS, method.name, "addUnbufferedWidget", "(L" + WIDGET_CLASS + ";)V");
                     if (firstNewClass == null) {
                         throw new OutdatedDeobfuscatorException("Space", "TextInputDialogWidget", "*", "Missing instruction");
                     }
@@ -2871,7 +2855,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         throw new OutdatedDeobfuscatorException("Space", "TextInputDialogWidget", "*", "Unexpected start of package");
                     }
                     galimulatorTextInputDialogClass = firstNewClass;
-                    remapClass(mappingsStream, galimulatorTextInputDialogClass, UI_PACKAGE + "TextInputDialogWidget");
+                    remapClass(galimulatorTextInputDialogClass, UI_PACKAGE + "TextInputDialogWidget");
                 }
             } else if (method.desc.equals("(Ljava/lang/String;Ljava/lang/String;)V")) {
                 AbstractInsnNode insn = method.instructions.getFirst();
@@ -2943,11 +2927,11 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Space", "Space", "setupBackgroundEffects", "Not resolved");
         }
 
-        remapMethod(mappingsStream, SPACE_CLASS, saveAsyncMethod, "saveAsync", "(Ljava/lang/String;Ljava/lang/String;)V");
-        remapMethod(mappingsStream, SPACE_CLASS, saveSyncMethod, "saveSync", "(Ljava/lang/String;Ljava/lang/String;)V");
-        remapMethod(mappingsStream, SPACE_CLASS, logicalTickMethod.name, "tick", "()I");
-        remapMethod(mappingsStream, SPACE_CLASS, getStateActorCreatorsMethod, "getStateActorCreators", "()Ljava/util/List;");
-        remapMethod(mappingsStream, SPACE_CLASS, setupBackgroundEffectsMethod, "setupBackgroundEffects", "()V");
+        remapMethod(SPACE_CLASS, saveAsyncMethod, "saveAsync", "(Ljava/lang/String;Ljava/lang/String;)V");
+        remapMethod(SPACE_CLASS, saveSyncMethod, "saveSync", "(Ljava/lang/String;Ljava/lang/String;)V");
+        remapMethod(SPACE_CLASS, logicalTickMethod.name, "tick", "()I");
+        remapMethod(SPACE_CLASS, getStateActorCreatorsMethod, "getStateActorCreators", "()Ljava/util/List;");
+        remapMethod(SPACE_CLASS, setupBackgroundEffectsMethod, "setupBackgroundEffects", "()V");
         spaceLogicalTickMethodName = logicalTickMethod.name;
 
         this.textInputDialogWidgetClass = galimulatorTextInputDialogClass;
@@ -2971,7 +2955,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         throw new OutdatedDeobfuscatorException("Space", "Space", "initialize", "Collision");
                     }
                     spaceInitializeMethod = method.name;
-                    remapMethod(mappingsStream, SPACE_CLASS, method.name, "initialize", "(F)V");
+                    remapMethod(SPACE_CLASS, method.name, "initialize", "(F)V");
 
                     for (AbstractInsnNode insn2 = method.instructions.getFirst(); insn2 != null; insn2 = insn2.getNext()) {
                         if (insn2.getOpcode() != Opcodes.FLOAD) {
@@ -2989,7 +2973,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new OutdatedDeobfuscatorException("Space", SPACE_CLASS, "aspectRatio", "Collision");
                         }
                         aspectRatioField = fieldInsn.name;
-                        remapField(mappingsStream, SPACE_CLASS, aspectRatioField, "aspectRatio", "F");
+                        remapField(SPACE_CLASS, aspectRatioField, "aspectRatio", "F");
                     }
                 }
             } else if (method.desc.startsWith("()") && !method.desc.equals("()V")) {
@@ -3029,7 +3013,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     insn = insn.getNext();
                 }
                 FieldInsnNode fieldInsn = (FieldInsnNode) insn;
-                remapField(mappingsStream, SPACE_CLASS, fieldInsn.name, SPACE_OPENED_WIDGETS_FIELD, "Ljava/util/Vector;");
+                remapField(SPACE_CLASS, fieldInsn.name, SPACE_OPENED_WIDGETS_FIELD, "Ljava/util/Vector;");
             }
         }
 
@@ -3045,10 +3029,10 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (signature == null) {
                 continue;
             }
-            remapMethod(mappingsStream, SPACE_CLASS, entry.getKey(), signature.getKey(), signature.getValue());
+            remapMethod(SPACE_CLASS, entry.getKey(), signature.getKey(), signature.getValue());
         }
 
-        remapMethod(mappingsStream, SPACE_CLASS, loadMethod.name, "loadState", "(Ljava/lang/String;)Z");
+        remapMethod(SPACE_CLASS, loadMethod.name, "loadState", "(Ljava/lang/String;)Z");
 
         // We can do more - a lot more actually
         AbstractInsnNode insn = loadMethod.instructions.getFirst();
@@ -3056,7 +3040,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (insn.getOpcode() == Opcodes.INVOKEVIRTUAL) {
                 MethodInsnNode methodInsn = (MethodInsnNode) insn;
                 if (methodInsn.name.equals("useXStream") && methodInsn.desc.equals("()Z")) {
-                    remapClass(mappingsStream, methodInsn.owner, "snoddasmannen/galimulator/DeviceConfiguration");
+                    remapClass(methodInsn.owner, "snoddasmannen/galimulator/DeviceConfiguration");
                     break;
                 }
             }
@@ -3113,7 +3097,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     if (!pauseInsn.owner.equals(SPACE_CLASS) || !pauseInsn.desc.equals("(Z)V")) {
                                         throw new IllegalStateException("Unexpected opcode");
                                     }
-                                    remapMethod(mappingsStream, SPACE_CLASS, pauseInsn.name, "setPaused", "(Z)V");
+                                    remapMethod(SPACE_CLASS, pauseInsn.name, "setPaused", "(Z)V");
                                     pauseMethod = pauseInsn.name;
                                     break;
                                 }
@@ -3153,7 +3137,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new IllegalStateException("The esitmated Space#paused field does not belong to the space class.");
                         }
                         pausedField = fieldInsn.name;
-                        remapField(mappingsStream, SPACE_CLASS, fieldInsn.name, "paused", "Z");
+                        remapField(SPACE_CLASS, fieldInsn.name, "paused", "Z");
                     } else if (pauseMethodInsn.getOpcode() == Opcodes.INVOKESTATIC) {
                         if (didInvokestatic) {
                             throw new IllegalStateException("Unexpected bytecode (invokestatic happened twice)");
@@ -3163,7 +3147,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (!methodInsn.desc.equals("()V") || !methodInsn.owner.equals(SPACE_CLASS)) {
                             throw new IllegalStateException("Asseration error: Space#displayStepButton not what was expected");
                         }
-                        remapMethod(mappingsStream, SPACE_CLASS, methodInsn.name, "displayStepButton", "()V");
+                        remapMethod(SPACE_CLASS, methodInsn.name, "displayStepButton", "()V");
                     }
                     pauseMethodInsn = pauseMethodInsn.getNext();
                 }
@@ -3181,22 +3165,22 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("(L" + EMPIRE_CLASS + ";)V")) {
                     throw new OutdatedDeobfuscatorException("Space", EMPIRE_CLASS, "addPeaceAgreement", "Unexpected desc or owner");
                 }
-                remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "addPeaceAgreement", "(L" + EMPIRE_CLASS + ";)V");
+                remapMethod(EMPIRE_CLASS, methodInsn.name, "addPeaceAgreement", "(L" + EMPIRE_CLASS + ";)V");
                 methodInsn = Objects.requireNonNull(getPreviousOrNull(ldcInsn, Opcodes.INVOKEVIRTUAL), "Null insn");
                 if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("()Z")) {
                     throw new OutdatedDeobfuscatorException("Space", EMPIRE_CLASS, "isNotable", "Unexpected desc or owner");
                 }
-                remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "isNotable", "()Z");
+                remapMethod(EMPIRE_CLASS, methodInsn.name, "isNotable", "()Z");
                 methodInsn = (MethodInsnNode) getNext(ldcInsn, Opcodes.ALOAD).getNext();
                 if (!methodInsn.owner.equals(EMPIRE_CLASS) || !methodInsn.desc.equals("()Ljava/lang/String;")) {
                     throw new OutdatedDeobfuscatorException("Space", EMPIRE_CLASS, "getDisplayName", "Unexpected desc or owner");
                 }
-                remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "getDisplayName", "()Ljava/lang/String;");
+                remapMethod(EMPIRE_CLASS, methodInsn.name, "getDisplayName", "()Ljava/lang/String;");
                 methodInsn = getNext(methodInsn, Opcodes.INVOKESTATIC);
                 if (!methodInsn.owner.equals(SPACE_CLASS)) {
                     throw new OutdatedDeobfuscatorException("Space", SPACE_CLASS, "postBulletin", "Unexpected owner");
                 }
-                remapMethod(mappingsStream, SPACE_CLASS, methodInsn.name, "postBulletin", methodInsn.desc);
+                remapMethod(SPACE_CLASS, methodInsn.name, "postBulletin", methodInsn.desc);
             }
         }
 
@@ -3206,12 +3190,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (signPeaceMethod == null) {
             throw new OutdatedDeobfuscatorException("Space", "Space", "signPeace", "Unresolved");
         }
-        remapMethod(mappingsStream, SPACE_CLASS, signPeaceMethod, "signPeace", "(L" + EMPIRE_CLASS + ";L" + EMPIRE_CLASS + ";)V");
+        remapMethod(SPACE_CLASS, signPeaceMethod, "signPeace", "(L" + EMPIRE_CLASS + ";L" + EMPIRE_CLASS + ";)V");
 
         boolean foundIsPaused = false;
         for (MethodNode method : space.methods) {
             if (!foundIsPaused && (method.access & Opcodes.ACC_PUBLIC) != 0 && method.desc.equals("()Z") && isGetter(method, SPACE_CLASS, pausedField, "Z", true)) {
-                remapMethod(mappingsStream, SPACE_CLASS, method.name, "isPaused", "()Z");
+                remapMethod(SPACE_CLASS, method.name, "isPaused", "()Z");
                 foundIsPaused = true;
             }
         }
@@ -3244,7 +3228,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (!fieldInsn.owner.equals(SPACE_CLASS) || !fieldInsn.desc.equals("I")) {
                             throw new OutdatedDeobfuscatorException("Space", SPACE_CLASS, "saveStackdepth", "Follow-up instruction has wrong owner class or descriptor");
                         }
-                        remapField(mappingsStream, SPACE_CLASS, fieldInsn.name, "saveStackdepth", "I");
+                        remapField(SPACE_CLASS, fieldInsn.name, "saveStackdepth", "I");
                         if (foundSaveStackdepth) {
                             throw new OutdatedDeobfuscatorException("Space", SPACE_CLASS, "saveStackdepth", "Collision");
                         }
@@ -3370,7 +3354,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 throw new OutdatedDeobfuscatorException("Space", WAR_LIST_WIDGET_CLASS, "__unused0", "Unexpected ocpode");
                             }
                             fieldInsn = (FieldInsnNode) insn;
-                            remapField(mappingsStream, node.name, fieldInsn.name, "__unused0", "()I");
+                            remapField(node.name, fieldInsn.name, "__unused0", "()I");
                             insn = getNext(insn, Opcodes.ICONST_3).getNext();
                             if (insn.getOpcode() != Opcodes.INVOKEVIRTUAL) {
                                 throw new OutdatedDeobfuscatorException("Space", "WidgetLayout", "setHorizontalMargin", "Unexpected ocpode");
@@ -3381,7 +3365,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             }
                             for (ClassNode node2 : nodes) {
                                 if (isInstanceofClass(node2, methodInsn.owner)) {
-                                    remapMethod(mappingsStream, node2.name, methodInsn.name, "setHorizontalMargin", "(I)V");
+                                    remapMethod(node2.name, methodInsn.name, "setHorizontalMargin", "(I)V");
                                 }
                             }
                         }
@@ -3398,18 +3382,18 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Space", PAGINATED_WIDGET_CLASS, "*", "Cannot be resolved");
         }
 
-        remapClass(mappingsStream, warListWidgetNode.name, WAR_LIST_WIDGET_CLASS);
-        remapClass(mappingsStream, warListEntryClass, WAR_LIST_ENTRY_CLASS);
-        remapClass(mappingsStream, paginatedWidgetClass, PAGINATED_WIDGET_CLASS);
-        remapMethod(mappingsStream, warListWidgetNode.name, warListWidgetPopulateMethod, "populate", "()V");
-        remapMethod(mappingsStream, WAR_CLASS, getWarNameMethod, "getWarName", "()Ljava/lang/String;");
-        remapMethod(mappingsStream, WAR_CLASS, getWarDisplayScoreMethod, "getDisplayScore", "()Ljava/lang/String;");
-        remapMethod(mappingsStream, WAR_CLASS, getWarDisplayAgeMethod, "getDisplayAge", "()Ljava/lang/String;");
+        remapClass(warListWidgetNode.name, WAR_LIST_WIDGET_CLASS);
+        remapClass(warListEntryClass, WAR_LIST_ENTRY_CLASS);
+        remapClass(paginatedWidgetClass, PAGINATED_WIDGET_CLASS);
+        remapMethod(warListWidgetNode.name, warListWidgetPopulateMethod, "populate", "()V");
+        remapMethod(WAR_CLASS, getWarNameMethod, "getWarName", "()Ljava/lang/String;");
+        remapMethod(WAR_CLASS, getWarDisplayScoreMethod, "getDisplayScore", "()Ljava/lang/String;");
+        remapMethod(WAR_CLASS, getWarDisplayAgeMethod, "getDisplayAge", "()Ljava/lang/String;");
 
         ClassNode warListEntryNode = name2Node.get(warListEntryClass);
         String flowButtonClass = name2Node.get(warListEntryNode.superName).superName;
 
-        remapClass(mappingsStream, flowButtonClass, FLOW_BUTTON_CLASS);
+        remapClass(flowButtonClass, FLOW_BUTTON_CLASS);
 
         assignAsInnerClass(warListWidgetNode, warListEntryNode, WAR_LIST_ENTRY_CLASS.substring(WAR_LIST_ENTRY_CLASS.lastIndexOf('$') + 1));
 
@@ -3421,19 +3405,19 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (method.desc.equals("()V")) {
                 TypeInsnNode typeInsn = getNextOrNull(method.instructions.getFirst(), Opcodes.NEW);
                 if (typeInsn != null && typeInsn.desc.equals(warListWidgetNode.name)) {
-                    remapMethod(mappingsStream, SPACE_CLASS, method.name, "openActiveWarList", "()V");
+                    remapMethod(SPACE_CLASS, method.name, "openActiveWarList", "()V");
                 }
             } else if (method.desc.equals("(L" + EMPIRE_CLASS + ";L" + EMPIRE_CLASS + ";)L" + WAR_CLASS + ";")) {
                 TypeInsnNode typeInsn = getNextOrNull(method.instructions.getFirst(), Opcodes.NEW);
                 if (typeInsn != null && typeInsn.desc.equals(WAR_CLASS)) {
-                    remapMethod(mappingsStream, SPACE_CLASS, method.name, "getOrCreateWar", "(L" + EMPIRE_CLASS + ";L" + EMPIRE_CLASS + ";)L" + WAR_CLASS + ";");
+                    remapMethod(SPACE_CLASS, method.name, "getOrCreateWar", "(L" + EMPIRE_CLASS + ";L" + EMPIRE_CLASS + ";)L" + WAR_CLASS + ";");
                     MethodInsnNode methodInsn = getPreviousOrNull(typeInsn, Opcodes.INVOKEVIRTUAL);
                     if (methodInsn == null) {
                         throw new OutdatedDeobfuscatorException("Space", "Lazy", "get", "Not found");
                     }
                     getLazyMethodName = methodInsn.name;
                     getLazyMethodDesc = methodInsn.desc;
-                    remapClass(mappingsStream, getLazyMethodDesc.substring(3, getLazyMethodDesc.length() - 1), BASE_PACKAGE + "Identifiable");
+                    remapClass(getLazyMethodDesc.substring(3, getLazyMethodDesc.length() - 1), BASE_PACKAGE + "Identifiable");
                     getOrCreateWarMethod = method.name;
                 }
             }
@@ -3462,13 +3446,13 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!methodInsn.owner.equals(WAR_CLASS) || !methodInsn.desc.equals("(L" + EMPIRE_CLASS + ";)V")) {
                     throw new OutdatedDeobfuscatorException("Space", WAR_CLASS, "incrementScore", "Invalid owner or desc");
                 }
-                remapMethod(mappingsStream, WAR_CLASS, methodInsn.name, "incrementScore", "(L" + EMPIRE_CLASS + ";)V");
+                remapMethod(WAR_CLASS, methodInsn.name, "incrementScore", "(L" + EMPIRE_CLASS + ";)V");
             } else if (method.desc.equals("(L" + EMPIRE_CLASS + ";)Ljava/util/List;")) {
                 FieldInsnNode fInsn = getNextOrNull(method.instructions.getFirst(), Opcodes.GETSTATIC);
                 if (fInsn != null && fInsn.owner.equals(SPACE_CLASS) && fInsn.name.equals(warsField) && fInsn.desc.equals("Ljava/util/Vector;")) {
                     MethodInsnNode methodInsn = getNextOrNull(fInsn, Opcodes.INVOKEVIRTUAL);
                     if (methodInsn != null && methodInsn.owner.equals("java/util/Vector") && methodInsn.name.equals("stream")) {
-                        remapMethod(mappingsStream, SPACE_CLASS, method.name, "getParticipatingWars", "(L" + EMPIRE_CLASS + ";)Ljava/util/List;");
+                        remapMethod(SPACE_CLASS, method.name, "getParticipatingWars", "(L" + EMPIRE_CLASS + ";)Ljava/util/List;");
                     }
                 }
             }
@@ -3478,7 +3462,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Space", SPACE_CLASS, "onTakeStarFrom", "Not found");
         }
 
-        remapMethod(mappingsStream, SPACE_CLASS, onTakeStarFromMethod, "onTakeStarFrom", "(L" + EMPIRE_CLASS + ";L" + EMPIRE_CLASS + ";)V");
+        remapMethod(SPACE_CLASS, onTakeStarFromMethod, "onTakeStarFrom", "(L" + EMPIRE_CLASS + ";L" + EMPIRE_CLASS + ";)V");
 
         ClassNode starNode = name2Node.get(STAR_CLASS);
 
@@ -3500,7 +3484,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!methodInsn.owner.equals(STAR_CLASS) || !methodInsn.desc.equals("(I)V")) {
                     throw new OutdatedDeobfuscatorException("Space", STAR_CLASS, "setDevelopment", "Invalid owner or desc");
                 }
-                remapMethod(mappingsStream, STAR_CLASS, methodInsn.name, "setDevelopment", "(I)V");
+                remapMethod(STAR_CLASS, methodInsn.name, "setDevelopment", "(I)V");
                 LdcInsnNode ldcInsn = getNext(methodInsn, Opcodes.LDC);
                 while (!(ldcInsn.cst instanceof Number)
                         || (Math.abs(((Number) ldcInsn.cst).floatValue() - 0.02F) > 0.001F)) {
@@ -3510,7 +3494,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!methodInsn.owner.equals(STAR_CLASS) || !methodInsn.desc.equals("(F)V")) {
                     throw new OutdatedDeobfuscatorException("Space", STAR_CLASS, "reduceWealthFactor", "Invalid owner or desc");
                 }
-                remapMethod(mappingsStream, STAR_CLASS, methodInsn.name, "reduceWealthFactor", "(F)V");
+                remapMethod(STAR_CLASS, methodInsn.name, "reduceWealthFactor", "(F)V");
             }
         }
 
@@ -3518,7 +3502,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Space", STAR_CLASS, "onHostileTakeover", "Not found");
         }
 
-        remapMethod(mappingsStream, STAR_CLASS, onHostileTakeoverMethod, "onHostileTakeover", "(L" + EMPIRE_CLASS + ";)V");
+        remapMethod(STAR_CLASS, onHostileTakeoverMethod, "onHostileTakeover", "(L" + EMPIRE_CLASS + ";)V");
 
         ClassNode warNode = name2Node.get(WAR_CLASS);
         String getScoreMethod = null;
@@ -3568,24 +3552,24 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!methodInsn.owner.equals(WAR_CLASS) || !methodInsn.desc.equals("()V")) {
                 throw new OutdatedDeobfuscatorException("Space", WAR_CLASS, "tick", "Invalid owner or desc");
             }
-            remapMethod(mappingsStream, WAR_CLASS, methodInsn.name, "tick", "()V");
+            remapMethod(WAR_CLASS, methodInsn.name, "tick", "()V");
             break;
         }
 
-        remapMethod(mappingsStream, WAR_CLASS, getScoreMethod, "getScore", "(L" + EMPIRE_CLASS + ";)I");
-        remapMethod(mappingsStream, WAR_CLASS, isActiveMethod, "isActive", "()Z");
+        remapMethod(WAR_CLASS, getScoreMethod, "getScore", "(L" + EMPIRE_CLASS + ";)I");
+        remapMethod(WAR_CLASS, isActiveMethod, "isActive", "()Z");
 
         for (ClassNode node : nodes) {
             if (isInstanceofWidget(node)) {
-                remapMethod(mappingsStream, node.name, widgetGetInnerWidthMethod, "getInnerWidth", "()I");
+                remapMethod(node.name, widgetGetInnerWidthMethod, "getInnerWidth", "()I");
             } else if (isInstanceofClass(node, BASE_PACKAGE + "Lazy")) {
-                remapMethod(mappingsStream, node.name, getLazyMethodName, "get", getLazyMethodDesc);
+                remapMethod(node.name, getLazyMethodName, "get", getLazyMethodDesc);
             }
         }
     }
 
-    public void remapStarMethods(Writer mappingsStream) throws IOException {
-        ClassNode starNode = name2Node.get(STAR_CLASS);
+    public void remapStarMethods() {
+        ClassNode starNode = this.name2Node.get(STAR_CLASS);
         MethodNode tickMethod = null;
         String connectMethod = null;
         String disconnectMethod = null;
@@ -3694,11 +3678,11 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "ownerEmpire", "Not resolved");
         }
 
-        remapMethod(mappingsStream, STAR_CLASS, tickMethod.name, "tick", "()V");
-        remapMethod(mappingsStream, STAR_CLASS, connectMethod, "connect", "(L" + STAR_CLASS + ";)V");
-        remapMethod(mappingsStream, STAR_CLASS, disconnectMethod, "disconnect", "(L" + STAR_CLASS + ";)V");
-        remapField(mappingsStream, STAR_CLASS, ownerEmpireField, "ownerEmpire", "L" + EMPIRE_CLASS + ";");
-        remapMethod(mappingsStream, STAR_CLASS, setOwnerEmpireMethod, "setOwnerEmpire", "(L" + EMPIRE_CLASS + ";)V");
+        remapMethod(STAR_CLASS, tickMethod.name, "tick", "()V");
+        remapMethod(STAR_CLASS, connectMethod, "connect", "(L" + STAR_CLASS + ";)V");
+        remapMethod(STAR_CLASS, disconnectMethod, "disconnect", "(L" + STAR_CLASS + ";)V");
+        remapField(STAR_CLASS, ownerEmpireField, "ownerEmpire", "L" + EMPIRE_CLASS + ";");
+        remapMethod(STAR_CLASS, setOwnerEmpireMethod, "setOwnerEmpire", "(L" + EMPIRE_CLASS + ";)V");
 
         {
             AbstractInsnNode insn = tickMethod.instructions.getFirst();
@@ -3711,7 +3695,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!addTransientWealth.owner.equals(EMPIRE_CLASS) || !addTransientWealth.desc.equals("(F)V")) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "addTransientWealth", "Owner or descriptor mismatch");
             }
-            remapMethod(mappingsStream, EMPIRE_CLASS, addTransientWealth.name, "addTransientWealth", "(F)V");
+            remapMethod(EMPIRE_CLASS, addTransientWealth.name, "addTransientWealth", "(F)V");
             MethodInsnNode random = getNext(addTransientWealth, Opcodes.INVOKESTATIC);
             if (!random.name.equals("random")) {
                 throw new OutdatedDeobfuscatorException("Star", "expected random call where there isn't");
@@ -3728,7 +3712,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "refreshBeaconState", "Owner or descriptor mismatch");
             }
             String refreshBeaconMethod = refreshBeacon.name;
-            remapMethod(mappingsStream, STAR_CLASS, refreshBeaconMethod, "refreshBeaconState", "()V");
+            remapMethod(STAR_CLASS, refreshBeaconMethod, "refreshBeaconState", "()V");
 
             insn = getNext(refreshBeacon, Opcodes.INVOKEVIRTUAL);
             MethodInsnNode getDevelopmentGrowthRate = (MethodInsnNode) insn.getNext();
@@ -3739,7 +3723,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!getDevelopmentGrowthRate.owner.equals(EMPIRE_CLASS) || !getDevelopmentGrowthRate.desc.equals("()I")) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getDevelopmentGrowthRate", "Owner or descriptor mismatch");
             }
-            remapMethod(mappingsStream, EMPIRE_CLASS, getDevelopmentGrowthRate.name, "getDevelopmentGrowthRate", "()I");
+            remapMethod(EMPIRE_CLASS, getDevelopmentGrowthRate.name, "getDevelopmentGrowthRate", "()I");
             insn = insn.getNext();
             if (insn.getOpcode() != Opcodes.INVOKESPECIAL) { // Don't ask why this is INVOKESPECIAL - probably has something to do with that it is private
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "addDevelopment", "Unexpected Opcode (Invokevirtual: " + (insn.getOpcode() == Opcodes.INVOKEVIRTUAL) + ")");
@@ -3748,7 +3732,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!addDevelopment.owner.equals(STAR_CLASS) || !addDevelopment.desc.equals("(I)V")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "addDevelopment", "Owner or descriptor mismatch");
             }
-            remapMethod(mappingsStream, STAR_CLASS, addDevelopment.name, "addDevelopment", "(I)V");
+            remapMethod(STAR_CLASS, addDevelopment.name, "addDevelopment", "(I)V");
             FieldInsnNode getHeat = getNext(insn, Opcodes.GETFIELD);
             if (!getHeat.desc.equals("F")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "heat", "Invalid descriptor");
@@ -3757,7 +3741,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (((Float) ((LdcInsnNode) insn).cst).floatValue() != 0.99F) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "heat", "Unexpected following instruction");
             }
-            remapField(mappingsStream, STAR_CLASS, getHeat.name, "heat", "F");
+            remapField(STAR_CLASS, getHeat.name, "heat", "F");
             insn = getNext(insn, Opcodes.INVOKEVIRTUAL).getNext();
             if (insn.getOpcode() != Opcodes.INVOKEVIRTUAL) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getWealthDecayFactor", "Unexpected Opcode for instruction");
@@ -3766,7 +3750,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!getWealthDecayFactor.owner.equals(EMPIRE_CLASS) || !getWealthDecayFactor.desc.equals("()F")) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getWealthDecayFactor", "Owner or descriptor mismatch");
             }
-            remapMethod(mappingsStream, EMPIRE_CLASS, getWealthDecayFactor.name, "getWealthDecayFactor", "()F");
+            remapMethod(EMPIRE_CLASS, getWealthDecayFactor.name, "getWealthDecayFactor", "()F");
             if ((insn = insn.getNext()).getOpcode() != Opcodes.FMUL) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getWealthDecayFactor", "Unexpected Opcode after instruction");
             }
@@ -3775,7 +3759,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!getNeighbours.owner.equals(STAR_CLASS) || !getNeighbours.desc.equals("Ljava/util/Vector;")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "neighbours", "Owner or descriptor mismatch");
             }
-            remapField(mappingsStream, STAR_CLASS, getNeighbours.name, "neighbours", "Ljava/util/Vector;");
+            remapField(STAR_CLASS, getNeighbours.name, "neighbours", "Ljava/util/Vector;");
             TypeInsnNode checkcast = getNext(getNeighbours, Opcodes.CHECKCAST);
             if (!checkcast.desc.equals(STAR_CLASS)) {
                 throw new OutdatedDeobfuscatorException("Star", "Checkcast not casting to expected type. Expected Star, current casting to " + checkcast.desc + " instead.");
@@ -3798,10 +3782,10 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 throw new OutdatedDeobfuscatorException("Star", CONFIGURABLE_PREFERNCE_INTERFACE, "*", "Not an exactly ideal number of interfaces present");
             }
             String configurablePreferenceClass = enumSettingsNode.interfaces.get(0);
-            remapClass(mappingsStream, configurablePreferenceClass, CONFIGURABLE_PREFERNCE_INTERFACE);
+            remapClass(configurablePreferenceClass, CONFIGURABLE_PREFERNCE_INTERFACE);
             for (ClassNode node : nodes) {
                 if (isInstanceofInterface(node, configurablePreferenceClass)) {
-                    remapMethod(mappingsStream, node.name, getSettingValue.name, "getValue", "()Ljava/lang/Object;");
+                    remapMethod(node.name, getSettingValue.name, "getValue", "()Ljava/lang/Object;");
                 }
             }
 
@@ -3813,7 +3797,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (insn.getOpcode() != Opcodes.IFEQ) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "isCapital", "Unexpected opcode after instruction");
             }
-            remapMethod(mappingsStream, STAR_CLASS, isCapital.name, "isCapital", "()Z");
+            remapMethod(STAR_CLASS, isCapital.name, "isCapital", "()Z");
             String isCapitalMethod = isCapital.name;
             LdcInsnNode magicConstant = null;
             while (insn != null) {
@@ -3833,7 +3817,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!getArtifact.owner.equals(STAR_CLASS) || !getArtifact.desc.equals("()L" + ARTIFACT_CLASS + ";")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "getArtifact", "Unexpected owner or descriptor");
             }
-            remapMethod(mappingsStream, STAR_CLASS, getArtifact.name, "getArtifact", "()L" + ARTIFACT_CLASS + ";");
+            remapMethod(STAR_CLASS, getArtifact.name, "getArtifact", "()L" + ARTIFACT_CLASS + ";");
 
             MethodInsnNode methodInsn = getNext(getArtifact, Opcodes.INVOKESPECIAL);
             if (!methodInsn.owner.equals("java/util/ArrayList")) {
@@ -3843,13 +3827,13 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!addSprawl.owner.equals(STAR_CLASS) || !addSprawl.desc.equals("()V")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "addSprawl", "Unexpected owner or descriptor");
             }
-            remapMethod(mappingsStream, STAR_CLASS, addSprawl.name, "addSprawl", "()V");
+            remapMethod(STAR_CLASS, addSprawl.name, "addSprawl", "()V");
             MethodInsnNode removeSprawl = getNext(addSprawl, Opcodes.INVOKESPECIAL);
             if (!removeSprawl.owner.equals(STAR_CLASS) || !removeSprawl.desc.equals("()V")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "removeSprawl", "Unexpected owner or descriptor");
             }
             String removeSprawlMethod = removeSprawl.name;
-            remapMethod(mappingsStream, STAR_CLASS, removeSprawlMethod, "removeSprawl", "()V");
+            remapMethod(STAR_CLASS, removeSprawlMethod, "removeSprawl", "()V");
 
             methodInsn = getNext(removeSprawl, Opcodes.INVOKEVIRTUAL);
             while (!methodInsn.owner.equals(SPRAWL_CLASS) || !methodInsn.name.equals("activity")) {
@@ -3860,7 +3844,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "orbitingActors", "Unexpected owner or descriptor");
             }
             String orbitingActorsField = getOrbitingActors.name;
-            remapField(mappingsStream, STAR_CLASS, orbitingActorsField, "orbitingActors", "Ljava/util/Set;");
+            remapField(STAR_CLASS, orbitingActorsField, "orbitingActors", "Ljava/util/Set;");
             methodInsn = getNext(getOrbitingActors, Opcodes.INVOKEVIRTUAL);
             if (!methodInsn.owner.equals(STAR_CLASS) || !methodInsn.desc.equals("()L" + STAR_NATIVES_CLASS + ";")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_NATIVES_CLASS, "spawnNativeActor", "Unexpected owner or descriptor of anchor instruction");
@@ -3873,7 +3857,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!spawnNativeActor.owner.equals(STAR_NATIVES_CLASS) || !spawnNativeActor.desc.equals("(L" + STAR_CLASS + ";)L" + STATE_ACTOR_CLASS + ";")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_NATIVES_CLASS, "spawnNativeActor", "Unexpected owner or descriptor");
             }
-            remapMethod(mappingsStream, STAR_NATIVES_CLASS, spawnNativeActor.name, "spawnNativeActor", "(L" + STAR_CLASS + ";)L" + STATE_ACTOR_CLASS + ";");
+            remapMethod(STAR_NATIVES_CLASS, spawnNativeActor.name, "spawnNativeActor", "(L" + STAR_CLASS + ";)L" + STATE_ACTOR_CLASS + ";");
             insn = spawnNativeActor.getNext();
             if (insn.getOpcode() != Opcodes.INVOKESTATIC) {
                 throw new OutdatedDeobfuscatorException("Star", SPACE_CLASS, "addActor", "Unexpected opcode");
@@ -3882,7 +3866,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!addActor.owner.equals(SPACE_CLASS) || !addActor.desc.equals("(L" + ACTOR_CLASS + ";)L" + ACTOR_CLASS + ";")) {
                 throw new OutdatedDeobfuscatorException("Star", SPACE_CLASS, "addActor", "Unexpected owner or descriptor");
             }
-            remapMethod(mappingsStream, SPACE_CLASS, addActor.name, "addActor", "(L" + ACTOR_CLASS + ";)L" + ACTOR_CLASS + ";");
+            remapMethod(SPACE_CLASS, addActor.name, "addActor", "(L" + ACTOR_CLASS + ";)L" + ACTOR_CLASS + ";");
             methodInsn = getNext(addActor, Opcodes.INVOKEVIRTUAL);
             while (!methodInsn.owner.equals(EMPIRE_CLASS)) {
                 methodInsn = getNext(methodInsn, Opcodes.INVOKEVIRTUAL);
@@ -3890,7 +3874,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!methodInsn.desc.equals("(L" + STAR_CLASS + ";L" + STAR_CLASS + ";)Z")) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "canAttack", "Unexpected descriptor");
             }
-            remapMethod(mappingsStream, EMPIRE_CLASS, methodInsn.name, "canAttack", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";)Z");
+            remapMethod(EMPIRE_CLASS, methodInsn.name, "canAttack", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";)Z");
             insn = methodInsn.getNext();
             if (insn.getOpcode() != Opcodes.IFEQ) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "canAttack", "Following opcode should be IFEQ, but is something different");
@@ -3899,7 +3883,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!incrementHeat.owner.equals(STAR_CLASS) || !incrementHeat.desc.equals("()V")) {
                 throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "incrementHeat", "Unexpected owner or descriptor");
             }
-            remapMethod(mappingsStream, STAR_CLASS, incrementHeat.name, "incrementHeat", "()V");
+            remapMethod(STAR_CLASS, incrementHeat.name, "incrementHeat", "()V");
             TypeInsnNode typeInsn = getNext(incrementHeat, Opcodes.NEW);
             if (!typeInsn.desc.contains("snoddasmannen/galimulator/Debris")) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getColor", "Unexpected NEW instruction for anchor instruction");
@@ -3908,7 +3892,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!getColor.owner.equals(EMPIRE_CLASS) || !getColor.desc.equals("()L" + GALCOLOR_CLASS + ";")) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getColor", "Unexpected owner or descriptor");
             }
-            remapMethod(mappingsStream, EMPIRE_CLASS, getColor.name, "getColor", "()L" + GALCOLOR_CLASS + ";");
+            remapMethod(EMPIRE_CLASS, getColor.name, "getColor", "()L" + GALCOLOR_CLASS + ";");
             methodInsn = getNext(getColor, Opcodes.INVOKESPECIAL);
             while (!methodInsn.owner.equals("snoddasmannen/galimulator/effects/AuraEffect")) {
                 methodInsn = getNext(methodInsn, Opcodes.INVOKESPECIAL);
@@ -3920,7 +3904,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (!getCombatPower.owner.equals(EMPIRE_CLASS) || !getCombatPower.desc.equals("(L" + STAR_CLASS + ";L" + STAR_CLASS + ";Z)I")) {
                 throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getCombatPower", "Unexpected owner or descriptor");
             }
-            remapMethod(mappingsStream, EMPIRE_CLASS, getCombatPower.name, "getCombatPower", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";Z)I");
+            remapMethod(EMPIRE_CLASS, getCombatPower.name, "getCombatPower", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";Z)I");
 
             String getForeignConnectionsMethod = null;
             String setBeaconMethod = null;
@@ -3933,13 +3917,13 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (!getForeignConnections.owner.equals(STAR_CLASS) || !getForeignConnections.desc.equals("(Z)Ljava/util/Vector;")) {
                             throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "getForeignConnections", "Owner or descriptor mismatch");
                         }
-                        remapMethod(mappingsStream, STAR_CLASS, getForeignConnections.name, "getForeignConnections", "(Z)Ljava/util/Vector;");
+                        remapMethod(STAR_CLASS, getForeignConnections.name, "getForeignConnections", "(Z)Ljava/util/Vector;");
                         getForeignConnectionsMethod = getForeignConnections.name;
                         MethodInsnNode setBeacon = getNext(getForeignConnections.getNext(), Opcodes.INVOKEVIRTUAL);
                         if (!setBeacon.owner.equals(STAR_CLASS) || !setBeacon.desc.equals("(Z)V")) {
                             throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "setBeacon", "Owner or descriptor mismatch");
                         }
-                        remapMethod(mappingsStream, STAR_CLASS, setBeacon.name, "setBeacon", "(Z)V");
+                        remapMethod(STAR_CLASS, setBeacon.name, "setBeacon", "(Z)V");
                         setBeaconMethod = setBeacon.name;
                     } else if (method.name.equals(removeSprawlMethod)) {
                         TypeInsnNode var10001 = getNext(method.instructions.getFirst(), Opcodes.CHECKCAST);
@@ -3950,7 +3934,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (!setAlive.owner.equals(SPRAWL_CLASS) || !setAlive.desc.equals("(Z)V")) {
                             throw new OutdatedDeobfuscatorException("Star", SPRAWL_CLASS, "setAlive", "Owner or descriptor mismatch");
                         }
-                        remapMethod(mappingsStream, SPRAWL_CLASS, setAlive.name, "setAlive", "(Z)V");
+                        remapMethod(SPRAWL_CLASS, setAlive.name, "setAlive", "(Z)V");
                     }
                 } else if (method.desc.equals("()Z")) {
                     if (method.name.equals(isCapitalMethod)) {
@@ -3958,7 +3942,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (!getCapital.owner.equals(EMPIRE_CLASS) || !getCapital.desc.equals("()L" + STAR_CLASS + ";")) {
                             throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "getCapital", "Owner or descriptor mismatch");
                         }
-                        remapMethod(mappingsStream, EMPIRE_CLASS, getCapital.name, "getCapital", "()L" + STAR_CLASS + ";");
+                        remapMethod(EMPIRE_CLASS, getCapital.name, "getCapital", "()L" + STAR_CLASS + ";");
                     }
                 } else if (method.desc.equals("(L" + STATE_ACTOR_CLASS + ";)V")) {
                     AbstractInsnNode var10001 = getNext(method.instructions.getFirst());
@@ -3977,7 +3961,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         throw new OutdatedDeobfuscatorException("Star", STAR_CLASS, "addOrbitingActor", "Collision");
                     }
                     addOrbitingActorMethod = method.name;
-                    remapMethod(mappingsStream, STAR_CLASS, addOrbitingActorMethod, "addOrbitingActor", "(L" + STATE_ACTOR_CLASS + ";)V");
+                    remapMethod(STAR_CLASS, addOrbitingActorMethod, "addOrbitingActor", "(L" + STATE_ACTOR_CLASS + ";)V");
                 }
             }
 
@@ -4007,7 +3991,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (!var10002.owner.equals(EMPIRE_CLASS) || !var10002.desc.equals("(L" + STAR_CLASS + ";)V")) {
                             throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "addBeacon", "Owner or descriptor mismatch");
                         }
-                        remapMethod(mappingsStream, EMPIRE_CLASS, var10002.name, "addBeacon", "(L" + STAR_CLASS + ";)V");
+                        remapMethod(EMPIRE_CLASS, var10002.name, "addBeacon", "(L" + STAR_CLASS + ";)V");
                         var10002 = getNext(var10002, Opcodes.INVOKEVIRTUAL);
                         if (!var10002.owner.equals(STAR_CLASS) || !var10002.desc.equals("()L" + EMPIRE_CLASS + ";")) {
                             throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "removeBeacon", "Preceding instruction has issues");
@@ -4016,7 +4000,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (!var10002.owner.equals(EMPIRE_CLASS) || !var10002.desc.equals("(L" + STAR_CLASS + ";)V")) {
                             throw new OutdatedDeobfuscatorException("Star", EMPIRE_CLASS, "removeBeacon", "Owner or descriptor mismatch");
                         }
-                        remapMethod(mappingsStream, EMPIRE_CLASS, var10002.name, "removeBeacon", "(L" + STAR_CLASS + ";)V");
+                        remapMethod(EMPIRE_CLASS, var10002.name, "removeBeacon", "(L" + STAR_CLASS + ";)V");
                     }
                 }
             }
@@ -4109,12 +4093,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Star", QUAD_TREE_CLASS, "y1/y2", "Unresolved");
         }
 
-        remapClass(mappingsStream, quadTreeClass.name, QUAD_TREE_CLASS);
-        remapMethod(mappingsStream, quadTreeClass.name, quadtreeInsert, "insert", "(L" + STAR_CLASS + ";)Z");
-        remapField(mappingsStream, quadTreeClass.name, quadtreeX1, "x1", "F");
-        remapField(mappingsStream, quadTreeClass.name, quadtreeY1, "y1", "F");
-        remapField(mappingsStream, quadTreeClass.name, quadtreeX2, "x2", "F");
-        remapField(mappingsStream, quadTreeClass.name, quadtreeY2, "y2", "F");
+        remapClass(quadTreeClass.name, QUAD_TREE_CLASS);
+        remapMethod(quadTreeClass.name, quadtreeInsert, "insert", "(L" + STAR_CLASS + ";)Z");
+        remapField(quadTreeClass.name, quadtreeX1, "x1", "F");
+        remapField(quadTreeClass.name, quadtreeY1, "y1", "F");
+        remapField(quadTreeClass.name, quadtreeX2, "x2", "F");
+        remapField(quadTreeClass.name, quadtreeY2, "y2", "F");
 
         ClassNode spaceNode = name2Node.get(SPACE_CLASS);
         if (spaceNode == null) {
@@ -4318,15 +4302,15 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Star", SPACE_CLASS, "restoreQuadtree", "Unresolved");
         }
 
-        remapMethod(mappingsStream, quadTreeClass.name, buildPairsMethod, "buildPairs", "()V");
-        remapMethod(mappingsStream, SPACE_CLASS, regenerateVoronoiCellsMethod, "regenerateVoronoiCells", "()V");
-        remapMethod(mappingsStream, EMPIRE_CLASS, setMottoMethod, "setMotto", "(Ljava/lang/String;)V");
-        remapMethod(mappingsStream, EMPIRE_CLASS, resetSpecialsMethod, "resetSpecials", "()V");
-        remapMethod(mappingsStream, EMPLOYMENT_AGENCY_CLASS, registerEmployerMethod, "registerEmployer", "(L" + EMPLOYER_CLASS + ";)V");
-        remapField(mappingsStream, SPACE_CLASS, quadTreeField, "starsQuadTree", "L" + quadTreeClass.name + ";");
-        remapMethod(mappingsStream, SPACE_CLASS, spaceConnectStarsMethod, "connectStars", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";)V");
-        remapMethod(mappingsStream, SPACE_CLASS, spaceDisconnectStarsMethod, "disconnectStars", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";)V");
-        remapMethod(mappingsStream, SPACE_CLASS, restoreQuadTreeMethod, "restoreQuadtree", "()V");
+        remapMethod(quadTreeClass.name, buildPairsMethod, "buildPairs", "()V");
+        remapMethod(SPACE_CLASS, regenerateVoronoiCellsMethod, "regenerateVoronoiCells", "()V");
+        remapMethod(EMPIRE_CLASS, setMottoMethod, "setMotto", "(Ljava/lang/String;)V");
+        remapMethod(EMPIRE_CLASS, resetSpecialsMethod, "resetSpecials", "()V");
+        remapMethod(EMPLOYMENT_AGENCY_CLASS, registerEmployerMethod, "registerEmployer", "(L" + EMPLOYER_CLASS + ";)V");
+        remapField(SPACE_CLASS, quadTreeField, "starsQuadTree", "L" + quadTreeClass.name + ";");
+        remapMethod(SPACE_CLASS, spaceConnectStarsMethod, "connectStars", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";)V");
+        remapMethod(SPACE_CLASS, spaceDisconnectStarsMethod, "disconnectStars", "(L" + STAR_CLASS + ";L" + STAR_CLASS + ";)V");
+        remapMethod(SPACE_CLASS, restoreQuadTreeMethod, "restoreQuadtree", "()V");
 
         String naiveRestoreQuadTreeMethod = null;
 
@@ -4358,7 +4342,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("Space", SPACE_CLASS, "naiveRestoreQuadtree", "Unresolved");
         }
 
-        remapMethod(mappingsStream, SPACE_CLASS, naiveRestoreQuadTreeMethod, "naiveRestoreQuadtree", "()V");
+        remapMethod(SPACE_CLASS, naiveRestoreQuadTreeMethod, "naiveRestoreQuadtree", "()V");
     }
 
     /**
@@ -4369,7 +4353,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
      * @deprecated Not used, only dumped here for future use. Does work however
      */
     @Deprecated
-    public void remapThisZero(Remapper remapper) {
+    public void remapThisZero() {
         Map<String, String> innerClasses = new HashMap<>();
         for (ClassNode node : nodes) {
             for (InnerClassNode icn : node.innerClasses) {
@@ -4383,6 +4367,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 }
             }
         }
+
         for (ClassNode node : nodes) {
             String outerName = innerClasses.get(node.name);
             if (outerName == null) {
@@ -4394,7 +4379,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             if (lastDollar == -1) {
                 int indexOfUnderscore = node.name.indexOf('_', lastSlash);
                 if (node.name.indexOf('_', indexOfUnderscore) != -1) {
-                    remapper.remapClassName(node.name, outerName + '$' + node.name.substring(indexOfUnderscore + 1));
+                    this.remapClass(node.name, outerName + '$' + node.name.substring(indexOfUnderscore + 1));
                 }
             }
 
@@ -4422,7 +4407,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new IllegalStateException("Field node has strange name: " + node.name + " " + fieldNode.name + fieldNode.desc);
                 }
             } else {
-                remapper.remapField(node.name, fieldNode.desc, fieldNode.name, "this$0");
+                this.remapField(node.name, fieldNode.name, fieldNode.desc, "this$0");
             }
         }
     }
@@ -4430,7 +4415,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
     /**
      * Needs to be called after {@link #remapSpaceFields(Writer)}.
      */
-    public void remapUIClasses(Writer mappingsStream) throws IOException {
+    public void remapUIClasses() {
         String textInputDialogWidget = this.textInputDialogWidgetClass;
 
         if (textInputDialogWidget == null) {
@@ -4466,8 +4451,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         }
                         setTimelapseModifierMethod = minsn.name;
                         galemulatorClass = minsn.owner;
-                        remapClass(mappingsStream, galemulatorClass, "snoddasmannen/galimulator/Galemulator");
-                        remapMethod(mappingsStream, galemulatorClass, setTimelapseModifierMethod, "setTimelapseModifier", "(I)V");
+                        remapClass(galemulatorClass, "snoddasmannen/galimulator/Galemulator");
+                        remapMethod(galemulatorClass, setTimelapseModifierMethod, "setTimelapseModifier", "(I)V");
                     }
                 }
             }
@@ -4523,7 +4508,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new OutdatedDeobfuscatorException("GestureListener", "GalimulatorGestureListener", "*", "Multiple candidates found");
                 }
                 galimulatorGestureListener = node.name;
-                remapClass(mappingsStream, node.name, BASE_PACKAGE + "GalimulatorGestureListener");
+                remapClass(node.name, BASE_PACKAGE + "GalimulatorGestureListener");
                 isGestureListener = true;
             } else if (node.superName.equals(WIDGET_CLASS)) {
                 boolean doubleClearBuffer = false;
@@ -4558,7 +4543,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     throw new OutdatedDeobfuscatorException("UI", GALAXY_PREVIEW_WIDGET_CLASS, "*", "Collision");
                                 }
                                 galaxyPreviewClass = node.name;
-                                remapClass(mappingsStream, galaxyPreviewClass, GALAXY_PREVIEW_WIDGET_CLASS);
+                                remapClass(galaxyPreviewClass, GALAXY_PREVIEW_WIDGET_CLASS);
                                 break;
                             }
                         }
@@ -4571,7 +4556,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (bufferedWidgetWrapperClass != null) {
                         throw new IllegalStateException("The deobfuscator for the BufferedWidgetWrapper class must be updated (suspecting multiple classes to be BufferedWidgetWrapper)");
                     }
-                    remapClass(mappingsStream, node.name, "snoddasmannen/galimulator/ui/BufferedWidgetWrapper");
+                    remapClass(node.name, "snoddasmannen/galimulator/ui/BufferedWidgetWrapper");
                     bufferedWidgetWrapperClass = node.name;
                     continue;
                 }
@@ -4613,7 +4598,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (projectMethod == null) {
                             throw new OutdatedDeobfuscatorException("GalFX", GALFX_CLASS, "projectBoardToScreen", "Not found");
                         }
-                        remapMethod(mappingsStream, GALFX_CLASS, projectMethod, "projectBoardToScreen", "(Lcom/badlogic/gdx/math/Vector3;)V");
+                        remapMethod(GALFX_CLASS, projectMethod, "projectBoardToScreen", "(Lcom/badlogic/gdx/math/Vector3;)V");
                         break;
                     }
                 }
@@ -4648,7 +4633,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!drawTextInsn.owner.equals(GALFX_CLASS) || !drawTextInsn.desc.equals("(FFLjava/lang/String;Lsnoddasmannen/galimulator/GalColor;Lsnoddasmannen/galimulator/GalFX$FONT_TYPE;)F")) {
                         throw new OutdatedDeobfuscatorException("GalFX", GALFX_CLASS, "drawText", "Owner or descriptor mismatch");
                     }
-                    remapMethod(mappingsStream, GALFX_CLASS, drawTextInsn.name, "drawText", "(FFLjava/lang/String;Lsnoddasmannen/galimulator/GalColor;Lsnoddasmannen/galimulator/GalFX$FONT_TYPE;)F");
+                    remapMethod(GALFX_CLASS, drawTextInsn.name, "drawText", "(FFLjava/lang/String;Lsnoddasmannen/galimulator/GalColor;Lsnoddasmannen/galimulator/GalFX$FONT_TYPE;)F");
                 }
                 continue;
             } else {
@@ -4714,7 +4699,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 if (!methodInsn.owner.equals(DEBUG_CLASS) || !methodInsn.desc.equals("(Ljava/lang/String;)I")) {
                                     throw new IllegalStateException("The deobfuscator for the Galemulator class is out of date (debug end call not present)");
                                 }
-                                remapMethod(mappingsStream, methodInsn.owner, methodInsn.name, "endDebuggingSection", methodInsn.desc);
+                                remapMethod(methodInsn.owner, methodInsn.name, "endDebuggingSection", methodInsn.desc);
                                 secondLdcDrawPassed = true;
                             } else {
                                 AbstractInsnNode iteratedInsn = insn.getNext();
@@ -4725,7 +4710,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 if (!methodInsn.owner.equals(DEBUG_CLASS) || !methodInsn.desc.equals("(Ljava/lang/String;Z)V")) {
                                     throw new IllegalStateException("The deobfuscator for the Galemulator class is out of date (debug start call not present)");
                                 }
-                                remapMethod(mappingsStream, methodInsn.owner, methodInsn.name, "startDebuggingSection", methodInsn.desc);
+                                remapMethod(methodInsn.owner, methodInsn.name, "startDebuggingSection", methodInsn.desc);
                                 firstLdcDrawPassed = true;
                             }
                         }
@@ -4736,7 +4721,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 if (foundSpaceRecomputeVisibleWidgets) {
                                     throw new IllegalStateException("The deobfuscator for the Galemulator class is out of date (multiple Space#recomputeVisibleWidget methods found). New one: " + methodInsn.name + methodInsn.desc);
                                 }
-                                remapMethod(mappingsStream, SPACE_CLASS, methodInsn.name, "recomputeVisibleWidgets", methodInsn.desc);
+                                remapMethod(SPACE_CLASS, methodInsn.name, "recomputeVisibleWidgets", methodInsn.desc);
                                 foundSpaceRecomputeVisibleWidgets = true;
                             } else {
                                 // Descriptor should be something along the lines of (Lsnoddasmannen/galimulator/rendersystem/class_3;)V
@@ -4744,7 +4729,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     throw new IllegalStateException("The deobfuscator for the Galemulator class is out of date (multiple Space#draw methods found). New one: " + methodInsn.name + methodInsn.desc);
                                 }
                                 foundSpaceDrawMethod = true;
-                                remapMethod(mappingsStream, SPACE_CLASS, methodInsn.name, "draw", methodInsn.desc);
+                                remapMethod(SPACE_CLASS, methodInsn.name, "draw", methodInsn.desc);
                             }
                         }
                     }
@@ -4773,7 +4758,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     throw new IllegalStateException("The deobfuscator for the Galemulator class is out of date (Found multiple getTimelapseModifier methods)");
                                 }
                                 foundTimelapseSpeedGetter = true;
-                                remapMethod(mappingsStream, node.name, method.name, "getTimelapseModifier", "()I");
+                                remapMethod(node.name, method.name, "getTimelapseModifier", "()I");
                             }
                         }
                     } else if (method.desc.equals("(I)V")) {
@@ -4797,7 +4782,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     throw new IllegalStateException("The deobfuscator for the Galemulator class is out of date (Found multiple setTimelapseModifier methods)");
                                 }
                                 foundTimelapseSpeedSetter = true;
-                                remapMethod(mappingsStream, node.name, method.name, "setTimelapseModifier", "(I)V");
+                                remapMethod(node.name, method.name, "setTimelapseModifier", "(I)V");
                             }
                         }
                     }
@@ -4813,7 +4798,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new OutdatedDeobfuscatorException("Sidebar", "Multiple potential Sidebar classes detected.");
                 }
                 sidebarClass = node.name;
-                remapClass(mappingsStream, sidebarClass, UI_PACKAGE + "SidebarWidget");
+                remapClass(sidebarClass, UI_PACKAGE + "SidebarWidget");
                 String openGameControlMethod = null;
                 for (MethodNode method : node.methods) {
                     if ((method.access & Opcodes.ACC_STATIC) == 0 || !method.desc.equals("()V")) {
@@ -4838,9 +4823,9 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (returnType.codePointAt(0) != 'L') {
                                 throw new OutdatedDeobfuscatorException("Sidebar", "Space", "openOptionChooser", "Wrong return type");
                             }
-                            remapMethod(mappingsStream, SPACE_CLASS, invokestatic.name, "openOptionChooser", invokestatic.desc);
+                            remapMethod(SPACE_CLASS, invokestatic.name, "openOptionChooser", invokestatic.desc);
                             String optionChooserWidgetClass = returnType.substring(1, returnType.length() - 1);
-                            remapClass(mappingsStream, optionChooserWidgetClass, UI_PACKAGE + "OptionChooserWidget");
+                            remapClass(optionChooserWidgetClass, UI_PACKAGE + "OptionChooserWidget");
                             TypeInsnNode typeInsn = getNext(invokestatic, Opcodes.NEW);
                             if (!typeInsn.desc.startsWith(UI_PACKAGE)) {
                                 throw new OutdatedDeobfuscatorException("Sidebar", "SidebarWidget$<anonymous class>", "*", "Package mismatch");
@@ -4855,9 +4840,9 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!registerListenerInsn.owner.equals(optionChooserWidgetClass)) {
                                 throw new OutdatedDeobfuscatorException("Sidebar", "OptionChooserWidget", "registerListener", "Owner mismatch");
                             }
-                            remapMethod(mappingsStream, optionChooserWidgetClass, registerListenerInsn.name, "registerSelectionListener", registerListenerInsn.desc);
+                            remapMethod(optionChooserWidgetClass, registerListenerInsn.name, "registerSelectionListener", registerListenerInsn.desc);
                             String listenerInterface = registerListenerInsn.desc.substring(2, registerListenerInsn.desc.length() - 3);
-                            remapClass(mappingsStream, listenerInterface, UI_PACKAGE + "OptionSelectionListener");
+                            remapClass(listenerInterface, UI_PACKAGE + "OptionSelectionListener");
                             ClassNode listenerImplNode = name2Node.get(typeInsn.desc);
                             if (listenerImplNode == null) {
                                 throw new OutdatedDeobfuscatorException("Sidebar", "SidebarWidget$<anonymous class>", "*", "Missing as a node");
@@ -4886,7 +4871,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                             throw new OutdatedDeobfuscatorException("Sidebar", "Space", "showGalaxyCreationScreen", "Mismatching owner or descriptor.");
                                         }
                                         insn = createGalaxyInsn;
-                                        remapMethod(mappingsStream, SPACE_CLASS, createGalaxyInsn.name, "showGalaxyCreationScreen", "()V");
+                                        remapMethod(SPACE_CLASS, createGalaxyInsn.name, "showGalaxyCreationScreen", "()V");
                                         break;
                                     }
                                     case "Load autosave": {
@@ -4896,7 +4881,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                             throw new OutdatedDeobfuscatorException("Sidebar", "Space", "loadAsync", "Mismatching owner or descriptor.");
                                         }
                                         insn = loadSaveMethod;
-                                        remapMethod(mappingsStream, SPACE_CLASS, loadSaveMethod.name, "loadAsync", "(Ljava/lang/String;)V");
+                                        remapMethod(SPACE_CLASS, loadSaveMethod.name, "loadAsync", "(Ljava/lang/String;)V");
                                         break;
                                     }
                                     case "Edit scenario": {
@@ -4906,7 +4891,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                             throw new OutdatedDeobfuscatorException("Sidebar", "Space", "showDialog", "Mismatching owner or descriptor.");
                                         }
                                         insn = openDialogMethod;
-                                        remapMethod(mappingsStream, SPACE_CLASS, openDialogMethod.name, "showDialog", openDialogMethod.desc);
+                                        remapMethod(SPACE_CLASS, openDialogMethod.name, "showDialog", openDialogMethod.desc);
                                         break;
                                     }
                                     case "Online scenarios": {
@@ -4916,7 +4901,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                             throw new OutdatedDeobfuscatorException("Sidebar", "Space", "showOnlineScenarioBrowser", "Mismatching owner or descriptor.");
                                         }
                                         insn = showScenarioBrowserInsn;
-                                        remapMethod(mappingsStream, SPACE_CLASS, showScenarioBrowserInsn.name, "showOnlineScenarioBrowser", "()V");
+                                        remapMethod(SPACE_CLASS, showScenarioBrowserInsn.name, "showOnlineScenarioBrowser", "()V");
                                         break;
                                     }
                                     case "Share a mod": {
@@ -4926,7 +4911,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                             throw new OutdatedDeobfuscatorException("Sidebar", "Space", "showWidget", "Mismatching owner or descriptor.");
                                         }
                                         insn = showWidgetInsn;
-                                        remapMethod(mappingsStream, SPACE_CLASS, showWidgetInsn.name, "showWidget", "(Ljava/lang/Class;)V");
+                                        remapMethod(SPACE_CLASS, showWidgetInsn.name, "showWidget", "(Ljava/lang/Class;)V");
                                         AbstractInsnNode previousInsn = showWidgetInsn.getPrevious();
                                         if (previousInsn.getOpcode() != Opcodes.LDC) {
                                             throw new OutdatedDeobfuscatorException("Sidebar", "ModUploadWidget", "*", "Opcode mismatch");
@@ -4935,7 +4920,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                         if (!(previousLdc.cst instanceof Type)) {
                                             throw new OutdatedDeobfuscatorException("Sidebar", "ModUploadWidget", "*", "Expected LDC TYPE, got " + previousLdc.cst.getClass().toString());
                                         }
-                                        remapClass(mappingsStream, ((Type) previousLdc.cst).getInternalName(), UI_PACKAGE + "ModUploadWidget");
+                                        remapClass(((Type) previousLdc.cst).getInternalName(), UI_PACKAGE + "ModUploadWidget");
                                         break;
                                     }
                                 }
@@ -4952,7 +4937,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (openGameControlMethod == null) {
                     throw new OutdatedDeobfuscatorException("Sidebar", "SidebarWidget", "openGameControl", "Absent");
                 }
-                remapMethod(mappingsStream, sidebarClass, openGameControlMethod, "openGameControl", "()V");
+                remapMethod(sidebarClass, openGameControlMethod, "openGameControl", "()V");
             } else if (isNewDynastyWidget) {
                 String refreshLayoutImplMethod = null;
                 for (MethodNode method : node.methods) {
@@ -4964,7 +4949,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (refreshLayoutImplMethod != null) {
                                 throw new OutdatedDeobfuscatorException("Widget", "Multiple candidates for NewDynastyWidget#refreshLayout0");
                             }
-                            remapMethod(mappingsStream, node.name, method.name, "refreshLayout0", "()V");
+                            remapMethod(node.name, method.name, "refreshLayout0", "()V");
                             refreshLayoutImplMethod = method.name;
                             break;
                         }
@@ -5042,8 +5027,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (mainTickLoopLockFieldName == null) {
                     throw new OutdatedDeobfuscatorException("GestureListener", SPACE_CLASS, "MAIN_TICK_LOOP_LOCK", "Entirely missing");
                 }
-                remapMethod(mappingsStream, SPACE_CLASS, getTickLoopLockInsn.name, "getMainTickLoopLock", "()Ljava/util/concurrent/Semaphore;");
-                remapField(mappingsStream, SPACE_CLASS, mainTickLoopLockFieldName, "MAIN_TICK_LOOP_LOCK", "Ljava/util/concurrent/Semaphore;");
+                remapMethod(SPACE_CLASS, getTickLoopLockInsn.name, "getMainTickLoopLock", "()Ljava/util/concurrent/Semaphore;");
+                remapField(SPACE_CLASS, mainTickLoopLockFieldName, "MAIN_TICK_LOOP_LOCK", "Ljava/util/concurrent/Semaphore;");
                 MethodInsnNode isShowingActorsMethod = null;
                 for (AbstractInsnNode insn : tapMethod.instructions) {
                     if (insn.getOpcode() != Opcodes.INVOKEVIRTUAL) {
@@ -5075,7 +5060,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         || !getActorNearMethodInsn.desc.equals("(FFL" + EMPIRE_CLASS + ";F)L" + ACTOR_CLASS + ";")) {
                     throw new OutdatedDeobfuscatorException("GestureListener", "Space", "findNearestActor", "Unexpected nature of the instruction");
                 }
-                remapMethod(mappingsStream, SPACE_CLASS, getActorNearMethodInsn.name, "findNearestActor", "(FFL" + EMPIRE_CLASS + ";F)L" + ACTOR_CLASS + ";");
+                remapMethod(SPACE_CLASS, getActorNearMethodInsn.name, "findNearestActor", "(FFL" + EMPIRE_CLASS + ";F)L" + ACTOR_CLASS + ";");
                 nextInsn = nextInsn.getNext();
                 while (nextInsn != null && nextInsn.getOpcode() != Opcodes.INVOKESTATIC) {
                     nextInsn = nextInsn.getNext();
@@ -5089,7 +5074,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new OutdatedDeobfuscatorException("GestureListener", "Space", "selectActor", "Unexpected nature of the instruction");
                 }
                 selectActorMethod = actorSelectionInsn.name;
-                remapMethod(mappingsStream, SPACE_CLASS, selectActorMethod, "selectActor", "(L" + ACTOR_CLASS + ";)V");
+                remapMethod(SPACE_CLASS, selectActorMethod, "selectActor", "(L" + ACTOR_CLASS + ";)V");
                 nextInsn = nextInsn.getNext();
                 while (nextInsn != null && (nextInsn.getOpcode() != Opcodes.GETSTATIC || !((FieldInsnNode) nextInsn).owner.equals(STAR_CLASS))) {
                     nextInsn = nextInsn.getNext();
@@ -5101,7 +5086,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!getSizeFactorInsn.desc.equals("F")) {
                     throw new OutdatedDeobfuscatorException("GestureListener", "Star", "globalSizeFactor", "Unexpected descriptor of field");
                 }
-                remapField(mappingsStream, STAR_CLASS, getSizeFactorInsn.name, "globalSizeFactor", "F");
+                remapField(STAR_CLASS, getSizeFactorInsn.name, "globalSizeFactor", "F");
                 nextInsn = nextInsn.getNext();
                 while (nextInsn != null && nextInsn.getOpcode() != Opcodes.INVOKESTATIC) {
                     nextInsn = nextInsn.getNext();
@@ -5114,7 +5099,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         || !findStarNearInsn.desc.equals("(FFDL" + EMPIRE_CLASS + ";)L" + STAR_CLASS + ";")) {
                     throw new OutdatedDeobfuscatorException("GestureListener", "Space", "findStarNear", "Unexpected nature of the instruction");
                 }
-                remapMethod(mappingsStream, SPACE_CLASS, findStarNearInsn.name, "findStarNear", "(FFDL" + EMPIRE_CLASS + ";)L" + STAR_CLASS + ";");
+                remapMethod(SPACE_CLASS, findStarNearInsn.name, "findStarNear", "(FFDL" + EMPIRE_CLASS + ";)L" + STAR_CLASS + ";");
             }
         }
 
@@ -5140,14 +5125,14 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("UI", ABSTRACT_BULLETIN_CLASS, "*", "Not found");
         }
 
-        remapClass(mappingsStream, newDynastyWidgetClass, UI_PACKAGE + "NewDynastyWidget");
-        remapClass(mappingsStream, oddityBulletinClass, ODDITY_BULLETIN_CLASS);
-        remapClass(mappingsStream, textBulletinClass, TEXT_BULLETIN_CLASS);
-        remapClass(mappingsStream, abstractBulletinClass, ABSTRACT_BULLETIN_CLASS);
+        remapClass(newDynastyWidgetClass, UI_PACKAGE + "NewDynastyWidget");
+        remapClass(oddityBulletinClass, ODDITY_BULLETIN_CLASS);
+        remapClass(textBulletinClass, TEXT_BULLETIN_CLASS);
+        remapClass(abstractBulletinClass, ABSTRACT_BULLETIN_CLASS);
 
-        remapMethod(mappingsStream, oddityBulletinClass, bulletinDrawAtMethod, "drawAt", "(FF)V");
-        remapMethod(mappingsStream, textBulletinClass, bulletinDrawAtMethod, "drawAt", "(FF)V");
-        remapMethod(mappingsStream, abstractBulletinClass, bulletinDrawAtMethod, "drawAt", "(FF)V");
+        remapMethod(oddityBulletinClass, bulletinDrawAtMethod, "drawAt", "(FF)V");
+        remapMethod(textBulletinClass, bulletinDrawAtMethod, "drawAt", "(FF)V");
+        remapMethod(abstractBulletinClass, bulletinDrawAtMethod, "drawAt", "(FF)V");
 
         String getWidgetWidthMethod = null;
         String widgetDrawHeaderMethod = null;
@@ -5181,7 +5166,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!fieldInsn.desc.equals("I")) {
                                 throw new OutdatedDeobfuscatorException("UI", "Space", "tickCount", "Unexpected descriptor");
                             }
-                            remapField(mappingsStream, SPACE_CLASS, fieldInsn.name, "tickCount", "I");
+                            remapField(SPACE_CLASS, fieldInsn.name, "tickCount", "I");
                             foundTickMethod = true;
                         }
                         continue;
@@ -5200,7 +5185,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 }
                                 foundShowWidgetMethod = true;
                                 wasShowWidgetMethod = true;
-                                remapMethod(mappingsStream, SPACE_CLASS, method.name, "showWidget", method.desc);
+                                remapMethod(SPACE_CLASS, method.name, "showWidget", method.desc);
                                 break;
                             }
                         }
@@ -5239,7 +5224,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new IllegalStateException("The deobfuscator for the Widget class is out of date (Unable to surely say which method is Widget#getWidth) (TRAP 2)");
                         }
 
-                        remapMethod(mappingsStream, GALFX_CLASS, invokeGetScreenWidth.name, "getScreenWidth", "()F");
+                        remapMethod(GALFX_CLASS, invokeGetScreenWidth.name, "getScreenWidth", "()F");
                     }
                 }
                 if (!foundShowWidgetMethod) {
@@ -5270,7 +5255,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     if (!methodInsn.owner.equals(GALFX_CLASS) || !methodInsn.desc.equals("(Ljava/lang/String;)Lcom/badlogic/gdx/graphics/g2d/TextureRegion;")) {
                                         throw new IllegalStateException("The deobfuscator for the GalFX class is out of date (Unable to find GalFX#getTextureRegion)");
                                     }
-                                    remapMethod(mappingsStream, GALFX_CLASS, methodInsn.name, "getTextureRegion", "(Ljava/lang/String;)Lcom/badlogic/gdx/graphics/g2d/TextureRegion;");
+                                    remapMethod(GALFX_CLASS, methodInsn.name, "getTextureRegion", "(Ljava/lang/String;)Lcom/badlogic/gdx/graphics/g2d/TextureRegion;");
                                     break;
                                 }
                             }
@@ -5326,9 +5311,9 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         }
 
                         widgetCameraField = cameraField;
-                        remapField(mappingsStream, WIDGET_CLASS, cameraField, "internalCamera", "Lcom/badlogic/gdx/graphics/Camera;");
-                        remapField(mappingsStream, WIDGET_CLASS, widgetHeaderColorField, "headerColor", "Lsnoddasmannen/galimulator/GalColor;");
-                        remapField(mappingsStream, WIDGET_CLASS, widgetHeaderTitleField, "headerTitle", "Ljava/lang/String;");
+                        remapField(WIDGET_CLASS, cameraField, "internalCamera", "Lcom/badlogic/gdx/graphics/Camera;");
+                        remapField(WIDGET_CLASS, widgetHeaderColorField, "headerColor", "Lsnoddasmannen/galimulator/GalColor;");
+                        remapField(WIDGET_CLASS, widgetHeaderTitleField, "headerTitle", "Ljava/lang/String;");
 
                         if (fxDrawWindowMethod == null) {
                             throw new IllegalStateException("The deobfuscator for the GalFX class is out of date! (Cannot resolve GalFX#drawWindow)");
@@ -5339,9 +5324,9 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         if (fxFullDrawTextureMethod == null) {
                             throw new OutdatedDeobfuscatorException("GalFX", "GalFX", "drawTexture");
                         }
-                        remapMethod(mappingsStream, GALFX_CLASS, fxDrawWindowMethod, "drawWindow", "(FFFFLsnoddasmannen/galimulator/GalColor;Lcom/badlogic/gdx/graphics/Camera;)V");
-                        remapMethod(mappingsStream, GALFX_CLASS, fxDrawTextMethod, "drawText", GALFX_DRAW_TEXT_DESCRIPTOR);
-                        remapMethod(mappingsStream, GALFX_CLASS, fxFullDrawTextureMethod, "drawTexture", GALFX_DRAW_TEXTURE_DESCRIPTOR);
+                        remapMethod(GALFX_CLASS, fxDrawWindowMethod, "drawWindow", "(FFFFLsnoddasmannen/galimulator/GalColor;Lcom/badlogic/gdx/graphics/Camera;)V");
+                        remapMethod(GALFX_CLASS, fxDrawTextMethod, "drawText", GALFX_DRAW_TEXT_DESCRIPTOR);
+                        remapMethod(GALFX_CLASS, fxFullDrawTextureMethod, "drawTexture", GALFX_DRAW_TEXTURE_DESCRIPTOR);
                     }
                 }
             } else if (node.name.equals(bufferedWidgetWrapperClass)) {
@@ -5375,7 +5360,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
 
                 if (isAnonymousInputProcessor) {
                     // Make class actually anonymous
-                    remapClass(mappingsStream, node.name, GALEMULATOR_INPUT_PROCESSOR_CLASS);
+                    remapClass(node.name, GALEMULATOR_INPUT_PROCESSOR_CLASS);
                     node.outerClass = galemulatorClass;
                     node.outerMethod = "create";
                     node.outerMethodDesc = "()V";
@@ -5400,7 +5385,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         final String expectedDesc = 'L' + galemulatorClass + ';';
                         for (FieldNode field : node.fields) {
                             if (field.desc.equals(expectedDesc)) {
-                                remapField(mappingsStream, node.name, field.name, "this$0", expectedDesc);
+                                remapField(node.name, field.name, "this$0", expectedDesc);
                                 break;
                             }
                         }
@@ -5418,13 +5403,13 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!invokeAccess000.owner.equals(galemulatorClass)) {
                                 throw new OutdatedDeobfuscatorException("Widget", "Galemulator", "access$000", "Wrong owner");
                             }
-                            remapMethod(mappingsStream, galemulatorClass, invokeAccess000.name, "access$000", invokeAccess000.desc);
+                            remapMethod(galemulatorClass, invokeAccess000.name, "access$000", invokeAccess000.desc);
 
                             FieldInsnNode getMouseMoveIdInsn = getNext(insn, Opcodes.GETSTATIC);
                             if (!getMouseMoveIdInsn.desc.equals("I")) {
                                 throw new OutdatedDeobfuscatorException("Widget", "Galemulator", "access$000", "Wrong descriptor");
                             }
-                            remapField(mappingsStream, galemulatorClass, getMouseMoveIdInsn.name, "mouseMoveId", "I");
+                            remapField(galemulatorClass, getMouseMoveIdInsn.name, "mouseMoveId", "I");
                             insn = getMouseMoveIdInsn.getNext();
 
                             MethodInsnNode unprojectCoordsInsn = getNext(insn, Opcodes.INVOKESTATIC);
@@ -5434,7 +5419,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!unprojectCoordsInsn.owner.equals(GALFX_CLASS)) {
                                 throw new OutdatedDeobfuscatorException("Widget", GALFX_CLASS, "unprojectScreenToWidget", "Wrong owner");
                             }
-                            remapMethod(mappingsStream, GALFX_CLASS, unprojectCoordsInsn.name, "unprojectScreenToWidget", "(Lcom/badlogic/gdx/math/Vector3;)V");
+                            remapMethod(GALFX_CLASS, unprojectCoordsInsn.name, "unprojectScreenToWidget", "(Lcom/badlogic/gdx/math/Vector3;)V");
 
                             MethodInsnNode getScreenHeightInsn = getNext(unprojectCoordsInsn, Opcodes.INVOKESTATIC);
                             if (!getScreenHeightInsn.desc.equals("()I")) {
@@ -5443,7 +5428,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!getScreenHeightInsn.owner.equals(GALFX_CLASS)) {
                                 throw new OutdatedDeobfuscatorException("Widget", GALFX_CLASS, "getScreenHeight", "Wrong owner");
                             }
-                            remapMethod(mappingsStream, GALFX_CLASS, getScreenHeightInsn.name, "getScreenHeight", "()I");
+                            remapMethod(GALFX_CLASS, getScreenHeightInsn.name, "getScreenHeight", "()I");
                             insn = getScreenHeightInsn.getNext();
 
                             while (insn != null) {
@@ -5463,7 +5448,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (node.name.equals(textBulletinClass)) {
                     continue;
                 }
-                remapMethod(mappingsStream, node.name, bulletinDrawAtMethod, "drawAt", "(FF)V");
+                remapMethod(node.name, bulletinDrawAtMethod, "drawAt", "(FF)V");
                 if (empireBulletinClass != null) {
                     throw new OutdatedDeobfuscatorException("UI", EMPIRE_BULLETIN_CLASS, "*", "Collision");
                 }
@@ -5484,13 +5469,13 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                                 throw new OutdatedDeobfuscatorException("ShipConstruction", SHIP_CONSTRUCTION_WIDGET_CLASS, "*", "Collision");
                                             }
                                             shipConstructionWidgetClass = field.desc.substring(1, field.desc.length() - 1);
-                                            remapField(mappingsStream, node.name, field.name, "this$0", field.desc);
+                                            remapField(node.name, field.name, "this$0", field.desc);
                                             ClassNode outerClassNode = name2Node.get(shipConstructionWidgetClass);
                                             if (outerClassNode == null) {
                                                 throw new OutdatedDeobfuscatorException("ShipConstruction", SHIP_CONSTRUCTION_WIDGET_CLASS, "*", "Node not found");
                                             }
                                             assignAsAnonymousClass(outerClassNode, node, "<init>", "()V");
-                                            remapClass(mappingsStream, node.name, SHIP_CONSTRUCTION_WIDGET_LOCATION_SELECTOR_CLASS);
+                                            remapClass(node.name, SHIP_CONSTRUCTION_WIDGET_LOCATION_SELECTOR_CLASS);
                                         }
                                     }
                                     AbstractInsnNode nextInsn = insn.getNext();
@@ -5518,12 +5503,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                                         if (instruction.getOpcode() == Opcodes.INVOKESTATIC) {
                                                             MethodInsnNode methodInsn = (MethodInsnNode) instruction;
                                                             if (methodInsn.owner.equals(SPACE_CLASS)) {
-                                                                remapMethod(mappingsStream, SPACE_CLASS, methodInsn.name, SPACE_ADD_AUXILIARY_LISTENER, methodInsn.desc);
+                                                                remapMethod(SPACE_CLASS, methodInsn.name, SPACE_ADD_AUXILIARY_LISTENER, methodInsn.desc);
                                                                 String auxListenerClassName = methodInsn.desc.substring(2, methodInsn.desc.length() - 3);
                                                                 if (!name2Node.containsKey(auxListenerClassName)) {
                                                                     throw new OutdatedDeobfuscatorException("ShipConstruction", AUXILIARY_LISTENER_CLASS, "*", "Node not found (searched for " + auxListenerClassName + ")");
                                                                 }
-                                                                remapClass(mappingsStream, auxListenerClassName, AUXILIARY_LISTENER_CLASS);
+                                                                remapClass(auxListenerClassName, AUXILIARY_LISTENER_CLASS);
                                                                 ClassNode auxListenerImpl = name2Node.get(((MethodInsnNode) methodInsn.getPrevious()).owner);
                                                                 if (auxListenerImpl.interfaces.size() != 1 || !auxListenerImpl.interfaces.get(0).equals(auxListenerClassName)) {
                                                                     throw new OutdatedDeobfuscatorException("ShipConstruction", "Unable to find the anonymous class that implements " + AUXILIARY_LISTENER_CLASS);
@@ -5541,8 +5526,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                                                     if (!findStarNear.owner.equals(SPACE_CLASS)) {
                                                                         throw new OutdatedDeobfuscatorException("ShipConstruction", SPACE_CLASS, "findStarNear(FF)", "Wrong owner class");
                                                                     }
-                                                                    remapMethod(mappingsStream, SPACE_CLASS, findStarNear.name, "findStarNear", "(FF)L" + STAR_CLASS + ";");
-                                                                    remapMethod(mappingsStream, GALFX_CLASS, unprojectToBoard.name, "unprojectScreenToBoard", "(FF)Lcom/badlogic/gdx/math/Vector3;");
+                                                                    remapMethod(SPACE_CLASS, findStarNear.name, "findStarNear", "(FF)L" + STAR_CLASS + ";");
+                                                                    remapMethod(GALFX_CLASS, unprojectToBoard.name, "unprojectScreenToBoard", "(FF)Lcom/badlogic/gdx/math/Vector3;");
 
                                                                     MethodInsnNode getOwningEmpire = getNext(findStarNear, Opcodes.INVOKEVIRTUAL);
                                                                     if (!getOwningEmpire.owner.equals(STAR_CLASS)) {
@@ -5561,8 +5546,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                                                     if (!setEffectColor.desc.equals("(L" + GALCOLOR_CLASS + ";)V")) {
                                                                         throw new OutdatedDeobfuscatorException("ShipConstruction", LOCATION_SELECTED_EFFECT_CLASS, "setColor", "Wrong desc");
                                                                     }
-                                                                    remapMethod(mappingsStream, EMPIRE_CLASS, getEmpireColor.name, "getDarkerColor", "()L" + GALCOLOR_CLASS + ";");
-                                                                    remapMethod(mappingsStream, LOCATION_SELECTED_EFFECT_CLASS, setEffectColor.name, "setColor", "(L" + GALCOLOR_CLASS + ";)V");
+                                                                    remapMethod(EMPIRE_CLASS, getEmpireColor.name, "getDarkerColor", "()L" + GALCOLOR_CLASS + ";");
+                                                                    remapMethod(LOCATION_SELECTED_EFFECT_CLASS, setEffectColor.name, "setColor", "(L" + GALCOLOR_CLASS + ";)V");
 
                                                                     insn3 = setEffectColor.getNext();
                                                                     while (insn3 != null) {
@@ -5572,7 +5557,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                                                                 if (!methodInsn3.desc.equals("(L" + ITEM_CLASS + ";)V")) {
                                                                                     throw new OutdatedDeobfuscatorException("ShipCosntruction", SPACE_CLASS, "showItem", "Unexpected desc");
                                                                                 }
-                                                                                remapMethod(mappingsStream, SPACE_CLASS, methodInsn3.name, "showItem", "(L" + ITEM_CLASS + ";)V");
+                                                                                remapMethod(SPACE_CLASS, methodInsn3.name, "showItem", "(L" + ITEM_CLASS + ";)V");
                                                                                 break;
                                                                             }
                                                                         }
@@ -5582,12 +5567,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                                                     if (!playSample.owner.equals(AUDIO_SAMPLE_CLASS) || !playSample.desc.equals("()V")) {
                                                                         throw new OutdatedDeobfuscatorException("ShipConstruction", AUDIO_SAMPLE_CLASS, "play", "Invalid descriptor or owner class");
                                                                     }
-                                                                    remapMethod(mappingsStream, AUDIO_SAMPLE_CLASS, playSample.name, "play", "()V");
+                                                                    remapMethod(AUDIO_SAMPLE_CLASS, playSample.name, "play", "()V");
                                                                     MethodInsnNode removeThisInsn = getNext(playSample, Opcodes.INVOKESTATIC);
                                                                     if (!removeThisInsn.owner.equals(SPACE_CLASS)) {
                                                                         throw new OutdatedDeobfuscatorException("ShipConstruction", "Space", "removeAuxiliaryListener", "Wrong owner");
                                                                     }
-                                                                    remapMethod(mappingsStream, SPACE_CLASS, removeThisInsn.name, "removeAuxiliaryListener", removeThisInsn.desc);
+                                                                    remapMethod(SPACE_CLASS, removeThisInsn.name, "removeAuxiliaryListener", removeThisInsn.desc);
                                                                     break;
                                                                 }
                                                                 break;
@@ -5646,12 +5631,12 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         String baseButtonClass = ninepatchButtonNode.superName;
         ClassNode baseButtonNode = name2Node.get(baseButtonClass);
 
-        remapMethod(mappingsStream, SPACE_CLASS, closeNonPersistentWidgetsMethod, "closeNonPersistentWidgets", "()V");
-        remapMethod(mappingsStream, sidebarClass, sidebarInitializeMethod.name, "reinitElements", "()V");
-        remapClass(mappingsStream, ninepatchButtonClass, NINEPATCH_BUTTON);
-        remapClass(mappingsStream, baseButtonClass, BASIC_BUTTON_CLASS);
-        remapClass(mappingsStream, shipConstructionWidgetClass, SHIP_CONSTRUCTION_WIDGET_CLASS);
-        remapClass(mappingsStream, empireBulletinClass, EMPIRE_BULLETIN_CLASS);
+        remapMethod(SPACE_CLASS, closeNonPersistentWidgetsMethod, "closeNonPersistentWidgets", "()V");
+        remapMethod(sidebarClass, sidebarInitializeMethod.name, "reinitElements", "()V");
+        remapClass(ninepatchButtonClass, NINEPATCH_BUTTON);
+        remapClass(baseButtonClass, BASIC_BUTTON_CLASS);
+        remapClass(shipConstructionWidgetClass, SHIP_CONSTRUCTION_WIDGET_CLASS);
+        remapClass(empireBulletinClass, EMPIRE_BULLETIN_CLASS);
 
         String widgetClearChildrenMethod = null;
         String widgetAddChildMethod = null;
@@ -5732,8 +5717,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         throw new OutdatedDeobfuscatorException("Widget", GALAXY_PREVIEW_WIDGET_CLASS, "previewLocations", "Not present");
                     }
 
-                    remapField(mappingsStream, galaxyPreviewClass, generatorField, "generator", 'L' + starGeneratorInterface + ';');
-                    remapField(mappingsStream, galaxyPreviewClass, previewLocationsField, "previewLocations", "Ljava/util/ArrayList;");
+                    remapField(galaxyPreviewClass, generatorField, "generator", 'L' + starGeneratorInterface + ';');
+                    remapField(galaxyPreviewClass, previewLocationsField, "previewLocations", "Ljava/util/ArrayList;");
 
                     String allowPreviewMethod = null;
                     String setPreviewGeneratorMethod = null;
@@ -5790,7 +5775,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             if (!mInsn.desc.equals("()V")) {
                                 throw new OutdatedDeobfuscatorException("Widget", GALAXY_PREVIEW_WIDGET_CLASS, "reconfigureGenerator", "Unexpected descriptor: " + mInsn.owner + "." + mInsn.name + mInsn.desc);
                             }
-                            remapMethod(mappingsStream, galaxyPreviewClass, mInsn.name, "reconfigureGenerator", "()V");
+                            remapMethod(galaxyPreviewClass, mInsn.name, "reconfigureGenerator", "()V");
                             while ((mInsn = getNextOrNull(mInsn, Opcodes.INVOKEVIRTUAL)) != null) {
                                 if (mInsn.owner.equals(galaxyPreviewClass) && mInsn.desc.equals("()V")) {
                                     throw new OutdatedDeobfuscatorException("Widget", GALAXY_PREVIEW_WIDGET_CLASS, "reconfigureGenerator", "Collision");
@@ -5805,8 +5790,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (setPreviewGeneratorMethod == null) {
                         throw new OutdatedDeobfuscatorException("Widget", GALAXY_PREVIEW_WIDGET_CLASS, "setGenerator", "Not present");
                     }
-                    remapMethod(mappingsStream, starGeneratorInterface, allowPreviewMethod, "allowPreview", "()Z");
-                    remapMethod(mappingsStream, galaxyPreviewClass, setPreviewGeneratorMethod, "setGenerator", "(L" + starGeneratorInterface + ";)V");
+                    remapMethod(starGeneratorInterface, allowPreviewMethod, "allowPreview", "()Z");
+                    remapMethod(galaxyPreviewClass, setPreviewGeneratorMethod, "setGenerator", "(L" + starGeneratorInterface + ";)V");
                 } else if (method.name.equals(widgetRefreshLayoutMethod) && method.desc.equals("()V")) {
                     String targettedMethod = null;
                     for (AbstractInsnNode insn : method.instructions) {
@@ -5817,7 +5802,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     throw new OutdatedDeobfuscatorException("Widget", GALAXY_PREVIEW_WIDGET_CLASS, "addGeneratedStar", "Collision");
                                 }
                                 targettedMethod = methodInsn.name;
-                                remapMethod(mappingsStream, galaxyPreviewClass, methodInsn.name, "addGeneratedStar", "()V");
+                                remapMethod(galaxyPreviewClass, methodInsn.name, "addGeneratedStar", "()V");
                             }
                         }
                     }
@@ -5845,7 +5830,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (starCountField == null) {
                         throw new OutdatedDeobfuscatorException("Widget", SPACE_CLASS, "starCount", "Not found");
                     }
-                    remapField(mappingsStream, SPACE_CLASS, starCountField, "starCount", "F");
+                    remapField(SPACE_CLASS, starCountField, "starCount", "F");
                 } else if (method.name.equals(widgetDrawMethod) && method.desc.equals("()V")) {
                     MethodInsnNode mInsn = getNextOrNull(method.instructions.getFirst(), Opcodes.INVOKEVIRTUAL);
                     MethodInsnNode drawDefaultBackgroundInsn = null;
@@ -5879,7 +5864,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     }
 
                     fxDrawRectMethod = mInsn.name;
-                    remapMethod(mappingsStream, GALFX_CLASS, fxDrawRectMethod, "drawRectangle", "(FFFFL" + GALCOLOR_CLASS + ";ZL" + GDX_CAMERA_CLASS + ";)V");
+                    remapMethod(GALFX_CLASS, fxDrawRectMethod, "drawRectangle", "(FFFFL" + GALCOLOR_CLASS + ";ZL" + GDX_CAMERA_CLASS + ";)V");
                 }
             }
 
@@ -5894,7 +5879,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     if (!minsn.owner.equals(GALFX_CLASS)) {
                         throw new OutdatedDeobfuscatorException("Widget", GALFX_CLASS, "drawRectangle", "Invalid delegate owner");
                     }
-                    remapMethod(mappingsStream, GALFX_CLASS, fxDrawRectMethod, "drawRectangle", minsn.desc);
+                    remapMethod(GALFX_CLASS, fxDrawRectMethod, "drawRectangle", minsn.desc);
                     methodLoop2:
                     for (MethodNode method2 : galFXNode.methods) {
                         if (method2.name.equals(minsn.name) && method2.desc.equals(minsn.desc)) {
@@ -5913,7 +5898,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                     throw new OutdatedDeobfuscatorException("Widget", GALFX_CLASS, "drawLine", "Repeating insn not repeating - owner, name or desc mismatch");
                                 }
                             }
-                            remapMethod(mappingsStream, GALFX_CLASS, mInsn2.name, "drawLine", mInsn2.desc);
+                            remapMethod(GALFX_CLASS, mInsn2.name, "drawLine", mInsn2.desc);
                             break methodLoop2;
                         }
                     }
@@ -5941,7 +5926,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         || !minsn.desc.equals(GALFX_DRAW_TEXTURE_DESCRIPTOR)) {
                     continue;
                 }
-                remapMethod(mappingsStream, GALFX_CLASS, method.name, "drawTexture", method.desc);
+                remapMethod(GALFX_CLASS, method.name, "drawTexture", method.desc);
                 fxAltDrawTexturesRemapCount++;
             }
 
@@ -5962,7 +5947,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new OutdatedDeobfuscatorException("UI", GALFX_CLASS, "drawNinepatch", "Unexpected method descriptor");
                         }
                         fxDrawNinepatchMethod = minsn.name;
-                        remapMethod(mappingsStream, GALFX_CLASS, fxDrawNinepatchMethod, "drawNinepatch", GALFX_DRAW_NINEPATCH_DESCRIPTOR);
+                        remapMethod(GALFX_CLASS, fxDrawNinepatchMethod, "drawNinepatch", GALFX_DRAW_NINEPATCH_DESCRIPTOR);
                         continue;
                     }
                 }
@@ -5982,7 +5967,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                         throw new OutdatedDeobfuscatorException("UI", GALFX_CLASS, "drawText (with align)", "Matched instruction invalid");
                     }
                     fxDrawTextMethod2 = methodInsn.name;
-                    remapMethod(mappingsStream, GALFX_CLASS, fxDrawTextMethod2, "drawText", GALFX_DRAW_TEXT_DESCRIPTOR_2);
+                    remapMethod(GALFX_CLASS, fxDrawTextMethod2, "drawText", GALFX_DRAW_TEXT_DESCRIPTOR_2);
                     break;
                 }
             }
@@ -6051,8 +6036,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("UI", GALFX_CLASS, "RENDERCACHE_LOCAL", "Not found");
         }
 
-        remapClass(mappingsStream, starGeneratorInterface, STAR_GENERATOR_INTERFACE);
-        remapField(mappingsStream, GALFX_CLASS, fxRendercacheThreadlocal, "RENDERCACHE_LOCAL", "Ljava/lang/ThreadLocal;");
+        remapClass(starGeneratorInterface, STAR_GENERATOR_INTERFACE);
+        remapField(GALFX_CLASS, fxRendercacheThreadlocal, "RENDERCACHE_LOCAL", "Ljava/lang/ThreadLocal;");
 
         String activeWidgetsField = null;
         String widgetIsPersistentMethod = null;
@@ -6103,8 +6088,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (closeWidgetMethod == null) {
             throw new OutdatedDeobfuscatorException("Widget", "Widget", "closeWidget", "not resolved");
         }
-        remapField(mappingsStream, SPACE_CLASS, activeWidgetsField, SPACE_ACTIVE_WIDGETS_FIELD, "Ljava/util/Vector;");
-        remapMethod(mappingsStream, SPACE_CLASS, closeWidgetMethod, "closeWidget", "(L" + WIDGET_CLASS + ";)V");
+        remapField(SPACE_CLASS, activeWidgetsField, SPACE_ACTIVE_WIDGETS_FIELD, "Ljava/util/Vector;");
+        remapMethod(SPACE_CLASS, closeWidgetMethod, "closeWidget", "(L" + WIDGET_CLASS + ";)V");
 
         for (MethodNode method : spaceClassNode.methods) {
             if (method.name.equals(closeWidgetMethod) && method.desc.equals("(L" + WIDGET_CLASS + ";)V")) {
@@ -6115,7 +6100,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 }
 
                 FieldInsnNode fieldInsn = (FieldInsnNode) insn;
-                remapField(mappingsStream, SPACE_CLASS, fieldInsn.name, "closedWidgets", "Ljava/util/Vector;");
+                remapField(SPACE_CLASS, fieldInsn.name, "closedWidgets", "Ljava/util/Vector;");
                 break;
             }
         }
@@ -6145,7 +6130,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
         if (!widgetMessageRecieverClass.startsWith(BASE_PACKAGE) || widgetMessageRecieverClass.startsWith(UI_PACKAGE)) {
             throw new OutdatedDeobfuscatorException("Widget", "Widget implements an unexpected interface.");
         }
-        remapClass(mappingsStream, widgetMessageRecieverClass, BASE_PACKAGE + "WidgetMessageReciever");
+        remapClass(widgetMessageRecieverClass, BASE_PACKAGE + "WidgetMessageReciever");
 
         for (FieldNode field : widgetClass.fields) {
             if (field.desc.equals("L" + WIDGET_POSITIONING_CLASS + ";")) {
@@ -6153,7 +6138,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new OutdatedDeobfuscatorException("Widget", "Widget", "positioning", "Collision");
                 }
                 widgetPositioningField = field.name;
-                remapField(mappingsStream, WIDGET_CLASS, field.name, "positioning", field.desc);
+                remapField(WIDGET_CLASS, field.name, "positioning", field.desc);
             }
         }
 
@@ -6256,8 +6241,8 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                             throw new OutdatedDeobfuscatorException("Widget", "Widget", "layout", "Multiple candidates assumed");
                         }
                         widgetLayoutClass = fieldInsn.desc.substring(1, fieldInsn.desc.length() - 1);
-                        remapClass(mappingsStream, widgetLayoutClass, UI_PACKAGE + "WidgetLayout");
-                        remapField(mappingsStream, WIDGET_CLASS, fieldInsn.name, "layout", fieldInsn.desc);
+                        remapClass(widgetLayoutClass, UI_PACKAGE + "WidgetLayout");
+                        remapField(WIDGET_CLASS, fieldInsn.name, "layout", fieldInsn.desc);
                     } else if (insn.getOpcode() == Opcodes.GETFIELD && firstField == null) {
                         firstField = (FieldInsnNode) insn;
                     }
@@ -6272,7 +6257,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                     throw new OutdatedDeobfuscatorException("Widget", "Widget", "children", "Descriptor or owner mismatch");
                 }
                 widgetChildrenField = firstField.name;
-                remapField(mappingsStream, WIDGET_CLASS, firstField.name, "children", firstField.desc);
+                remapField(WIDGET_CLASS, firstField.name, "children", firstField.desc);
             } else if ((method.access & Opcodes.ACC_PUBLIC) != 0 && method.desc.equals("()L" + WIDGET_POSITIONING_CLASS + ";") && isGetter(method, WIDGET_CLASS, widgetPositioningField, "L" + WIDGET_POSITIONING_CLASS + ";", false)) {
                 if (widgetGetPositioningMethod != null) {
                     throw new OutdatedDeobfuscatorException("Widget", "Widget", "getPositioning", "Collision");
@@ -6305,7 +6290,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                 if (!fieldInsn.desc.equals("J")) {
                     throw new OutdatedDeobfuscatorException("Widget", "Widget", "lastRegisteredMouseMevement", "Descriptor mismatch");
                 }
-                remapField(mappingsStream, WIDGET_CLASS, fieldInsn.name, "lastRegisteredMouseMevement", "J");
+                remapField(WIDGET_CLASS, fieldInsn.name, "lastRegisteredMouseMevement", "J");
             }
         }
 
@@ -6568,54 +6553,52 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
             throw new OutdatedDeobfuscatorException("GestureListener", "Widget", "onMouseDown");
         }
 
-        mappingsStream.append("#START Remap UI-related methods across hierarchy\n");
         for (ClassNode node : nodes) {
             if (isInstanceofInterface(node, widgetMessageRecieverClass)) {
                 if (isInstanceofWidget(node)) {
                     if (isInstanceofClass(node, baseButtonClass)) {
-                        remapMethod(mappingsStream, node.name, basicButtonSetTextMethod, "setButtonText", "(Ljava/lang/String;)V");
-                        remapMethod(mappingsStream, node.name, basicButtonSetColorMethod, "setButtonColor", "(L" + GALCOLOR_CLASS + ";)V");
-                        remapMethod(mappingsStream, node.name, baseButtonRenderBackgroundMethod, "renderButtonBackground", "()V");
+                        remapMethod(node.name, basicButtonSetTextMethod, "setButtonText", "(Ljava/lang/String;)V");
+                        remapMethod(node.name, basicButtonSetColorMethod, "setButtonColor", "(L" + GALCOLOR_CLASS + ";)V");
+                        remapMethod(node.name, baseButtonRenderBackgroundMethod, "renderButtonBackground", "()V");
                     }
-                    remapMethod(mappingsStream, node.name, widgetDrawMethod, "draw", "()V");
-                    remapMethod(mappingsStream, node.name, widgetDrawHeaderMethod, "drawHeader", "()V");
-                    remapMethod(mappingsStream, node.name, getWidgetWidthMethod, "getWidth", "()I");
-                    remapMethod(mappingsStream, node.name, widgetGetHeightMethod, "getHeight", "()I");
-                    remapMethod(mappingsStream, node.name, getXMethod, "getX", "()D");
-                    remapMethod(mappingsStream, node.name, getYMethod, "getY", "()D");
-                    remapMethod(mappingsStream, node.name, containsPointMethod, "containsPoint", "(Lcom/badlogic/gdx/math/Vector2;)Z");
-                    remapMethod(mappingsStream, node.name, widgetSetHeaderColorMethod, "setHeaderColor", "(Lsnoddasmannen/galimulator/GalColor;)V");
-                    remapMethod(mappingsStream, node.name, widgetSetHeaderTitleMethod, "setHeaderTitle", "(Ljava/lang/String;)V");
-                    remapMethod(mappingsStream, node.name, widgetGetHeaderTitleMethod, "getHeaderTitle", "()Ljava/lang/String;");
-                    remapMethod(mappingsStream, node.name, widgetDrawBackgroundMethod, "drawBackground", "(Lsnoddasmannen/galimulator/GalColor;)V");
-                    remapMethod(mappingsStream, node.name, widgetClearChildrenMethod, "clearChildren", "()V");
-                    remapMethod(mappingsStream, node.name, widgetAddChildMethod, "addChild", widgetAddChildMethodDescriptor);
-                    remapMethod(mappingsStream, node.name, widgetRefreshLayoutMethod, "refreshLayout", "()V");
-                    remapMethod(mappingsStream, node.name, widgetDrawChildrenMethod, "drawChildren", "()V");
-                    remapMethod(mappingsStream, node.name, widgetInterceptMouseDownMethod, "interceptMouseDown", "(FF)Z");
-                    remapMethod(mappingsStream, node.name, widgetGetChildrenMethod, "getChildWidgets", "()Ljava/util/Vector;");
-                    remapMethod(mappingsStream, node.name, widgetGetCameraMethod, "getCamera", "()L" + GDX_CAMERA_CLASS + ";");
-                    remapMethod(mappingsStream, node.name, widgetGetPositioningMethod, "getPositioning", "()L" + WIDGET_POSITIONING_CLASS + ";");
-                    remapMethod(mappingsStream, node.name, widgetSetPositioningMethod, "setPositioning", "(L" + WIDGET_POSITIONING_CLASS + ";)V");
-                    remapMethod(mappingsStream, node.name, widgetPropagateMessageLocally, "propagateMessageLocally", "(L" + WIDGET_MESSAGE_CLASS + ";)V");
-                    remapMethod(mappingsStream, node.name, widgetOnDisposeMethod, "onDispose", "()V");
-                    remapMethod(mappingsStream, node.name, widgetIsPersistentMethod, "isPersistent", "()Z");
-                    remapMethod(mappingsStream, node.name, widgetHoverMethod, "hover", "(FFZ)V");
-                    remapMethod(mappingsStream, node.name, widgetConsiderRelayoutMethod, "considerRelayout", "()V");
-                    remapMethod(mappingsStream, node.name, widgetMouseDownMethod, "mouseDown", "(DD)V");
-                    remapMethod(mappingsStream, node.name, widgetDrawDefaultBackgroundMethod, "drawDefaultBackground", "()V");
+                    remapMethod(node.name, widgetDrawMethod, "draw", "()V");
+                    remapMethod(node.name, widgetDrawHeaderMethod, "drawHeader", "()V");
+                    remapMethod(node.name, getWidgetWidthMethod, "getWidth", "()I");
+                    remapMethod(node.name, widgetGetHeightMethod, "getHeight", "()I");
+                    remapMethod(node.name, getXMethod, "getX", "()D");
+                    remapMethod(node.name, getYMethod, "getY", "()D");
+                    remapMethod(node.name, containsPointMethod, "containsPoint", "(Lcom/badlogic/gdx/math/Vector2;)Z");
+                    remapMethod(node.name, widgetSetHeaderColorMethod, "setHeaderColor", "(Lsnoddasmannen/galimulator/GalColor;)V");
+                    remapMethod(node.name, widgetSetHeaderTitleMethod, "setHeaderTitle", "(Ljava/lang/String;)V");
+                    remapMethod(node.name, widgetGetHeaderTitleMethod, "getHeaderTitle", "()Ljava/lang/String;");
+                    remapMethod(node.name, widgetDrawBackgroundMethod, "drawBackground", "(Lsnoddasmannen/galimulator/GalColor;)V");
+                    remapMethod(node.name, widgetClearChildrenMethod, "clearChildren", "()V");
+                    remapMethod(node.name, widgetAddChildMethod, "addChild", widgetAddChildMethodDescriptor);
+                    remapMethod(node.name, widgetRefreshLayoutMethod, "refreshLayout", "()V");
+                    remapMethod(node.name, widgetDrawChildrenMethod, "drawChildren", "()V");
+                    remapMethod(node.name, widgetInterceptMouseDownMethod, "interceptMouseDown", "(FF)Z");
+                    remapMethod(node.name, widgetGetChildrenMethod, "getChildWidgets", "()Ljava/util/Vector;");
+                    remapMethod(node.name, widgetGetCameraMethod, "getCamera", "()L" + GDX_CAMERA_CLASS + ";");
+                    remapMethod(node.name, widgetGetPositioningMethod, "getPositioning", "()L" + WIDGET_POSITIONING_CLASS + ";");
+                    remapMethod(node.name, widgetSetPositioningMethod, "setPositioning", "(L" + WIDGET_POSITIONING_CLASS + ";)V");
+                    remapMethod(node.name, widgetPropagateMessageLocally, "propagateMessageLocally", "(L" + WIDGET_MESSAGE_CLASS + ";)V");
+                    remapMethod(node.name, widgetOnDisposeMethod, "onDispose", "()V");
+                    remapMethod(node.name, widgetIsPersistentMethod, "isPersistent", "()Z");
+                    remapMethod(node.name, widgetHoverMethod, "hover", "(FFZ)V");
+                    remapMethod(node.name, widgetConsiderRelayoutMethod, "considerRelayout", "()V");
+                    remapMethod(node.name, widgetMouseDownMethod, "mouseDown", "(DD)V");
+                    remapMethod(node.name, widgetDrawDefaultBackgroundMethod, "drawDefaultBackground", "()V");
                 }
-                remapMethod(mappingsStream, node.name, widgetRecieveMessageMethod, "recieveMessage", "(L" + WIDGET_MESSAGE_CLASS + ";)V");
+                remapMethod(node.name, widgetRecieveMessageMethod, "recieveMessage", "(L" + WIDGET_MESSAGE_CLASS + ";)V");
             } else if (isInstanceofClass(node, widgetLayoutClass)) {
-                remapMethod(mappingsStream, node.name, widgetLayoutNewlineMethod, "newline", "()V");
-                remapMethod(mappingsStream, node.name, widgetLayoutRecomputeMethod, "recompute", "()V");
-                remapMethod(mappingsStream, node.name, widgetLayoutGetHeightMethod, "getHeight", "()I");
-                remapMethod(mappingsStream, node.name, widgetLayoutGetWidthMethod, "getWidth", "()I");
+                remapMethod(node.name, widgetLayoutNewlineMethod, "newline", "()V");
+                remapMethod(node.name, widgetLayoutRecomputeMethod, "recompute", "()V");
+                remapMethod(node.name, widgetLayoutGetHeightMethod, "getHeight", "()I");
+                remapMethod(node.name, widgetLayoutGetWidthMethod, "getWidth", "()I");
             }
         }
-        mappingsStream.append("#END Remap UI-related methods across hierarchy\n");
 
-        remapDialogClasses(mappingsStream, settingsDialogClass);
+        remapDialogClasses(settingsDialogClass);
     }
 
     private void resolveEnumMemberNames(String className, Map<String, String> memberMappings) {
@@ -6689,19 +6672,19 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
      *
      * @param mappingsStream Suggested remapper mappings are written to the writer in the tiny v1 format. It appeands, so the header is not written
      */
-    public void runAll(@NotNull Writer mappingsStream) throws IOException {
-        remapSpaceFields(mappingsStream);
-        remapPlayerMethods(mappingsStream);
-        remapHotkeys(mappingsStream);
-        remapEmpireClass(mappingsStream);
-        remapUIClasses(mappingsStream);
-        remapActorClasses(mappingsStream);
-        remapMapModes(mappingsStream);
-        remapNoiseGenerators(mappingsStream);
-        remapGalaxyGeneration(mappingsStream);
-        remapEmploymentAgency(mappingsStream);
-        remapStarMethods(mappingsStream);
-        remapRendersystem(mappingsStream);
-        remapGenerators(mappingsStream);
+    public void runAll() {
+        remapSpaceFields();
+        remapPlayerMethods();
+        remapHotkeys();
+        remapEmpireClass();
+        remapUIClasses();
+        remapActorClasses();
+        remapMapModes();
+        remapNoiseGenerators();
+        remapGalaxyGeneration();
+        remapEmploymentAgency();
+        remapStarMethods();
+        remapRendersystem();
+        remapGenerators();
     }
 }

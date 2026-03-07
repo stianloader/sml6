@@ -1,4 +1,4 @@
-package org.stianloader.sml6.starplane;
+package org.stianloader.sml6.starplane.remapping;
 
 import java.util.ArrayList;
 import java.util.Collection;

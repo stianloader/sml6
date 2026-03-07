@@ -50,4 +50,11 @@ public class ReadOnlyMappingLookupSink implements MappingLookup, MappingSink {
     public ReadOnlyMappingLookupSink remapMember(@NotNull MemberRef srcRef, @NotNull String dstName) {
         throw new UnsupportedOperationException("Mutation is not permitted.");
     }
+
+    @Override
+    @NotNull
+    public ReadOnlyMappingLookupSink remapParameter(@NotNull String srcOwner, @NotNull String srcMethodName, @NotNull String srcDesc,
+            int paramIndex, @NotNull String destParamName) {
+        throw new UnsupportedOperationException("Mutation is not permitted.");
+    }
 }

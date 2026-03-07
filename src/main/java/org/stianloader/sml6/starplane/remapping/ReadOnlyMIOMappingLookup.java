@@ -76,4 +76,11 @@ public class ReadOnlyMIOMappingLookup implements MappingLookup, MappingSink {
     public ReadOnlyMIOMappingLookup remapMember(@NotNull MemberRef srcRef, @NotNull String dstName) {
         throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
     }
+
+    @Override
+    @NotNull
+    public ReadOnlyMIOMappingLookup remapParameter(@NotNull String srcOwner, @NotNull String srcMethodName, @NotNull String srcDesc,
+            int paramIndex, @NotNull String destParamName) {
+        throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
+    }
 }

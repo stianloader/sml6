@@ -3,10 +3,8 @@ package org.stianloader.sml6.tasks;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
-import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,13 +33,14 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.stianloader.deobf.ClassWrapper;
+import org.stianloader.deobf.IntermediaryGenerator;
+import org.stianloader.deobf.MethodReference;
+import org.stianloader.deobf.Oaktree;
+import org.stianloader.remapper.Remapper;
 import org.stianloader.sml6.starplane.autodeobf.Autodeobf502;
 import org.stianloader.sml6.starplane.autodeobf.AutodeobfRunner;
-
-import de.geolykt.starloader.deobf.ClassWrapper;
-import de.geolykt.starloader.deobf.IntermediaryGenerator;
-import de.geolykt.starloader.deobf.MethodReference;
-import de.geolykt.starloader.deobf.Oaktree;
+import org.stianloader.sml6.starplane.remapping.TinyV1MappingWriter;
 
 @CacheableTask
 public abstract class DeobfuscateGameTask extends ConventionTask {
@@ -144,13 +143,21 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
             this.getLogger().debug("Deobfuscated classes in " + (startIntermediarisation - startDeobf) / 1_000_000L + " ms.");
 
             if (this.getWithSLDeobfRemapping().get()) {
-                IntermediaryGenerator generator = new IntermediaryGenerator(intermediaryMappingsFile, null, deobfuscator.getClassNodesDirectly());
-                generator.useAlternateClassNaming(!Boolean.getBoolean("de.geolykt.starplane.oldnames"));
-                generator.remapClassesV2(true);
-                deobfuscator.fixSwitchMaps();
-                generator.doProposeEnumFieldsV2();
-                generator.remapGetters();
-                generator.deobfuscate();
+                try (TinyV1MappingWriter mappingWriter = new TinyV1MappingWriter(intermediaryMappingsFile, "official", "intermediary")) {
+                    IntermediaryGenerator generator = new IntermediaryGenerator(mappingWriter, deobfuscator.getClassNodesDirectly());
+                    generator.useAlternateClassNaming(!Boolean.getBoolean("de.geolykt.starplane.oldnames"));
+                    generator.remapClassesV2(true);
+                    deobfuscator.fixSwitchMaps();
+                    generator.doProposeEnumFieldsV2();
+                    generator.remapGetters();
+
+                    Remapper remapper = new Remapper(mappingWriter);
+                    StringBuilder sharedBuilder = new StringBuilder();
+
+                    for (ClassNode node : deobfuscator.getClassNodesDirectly()) {
+                        remapper.remapNode(Objects.requireNonNull(node), sharedBuilder);
+                    }
+                }
                 this.getLogger().info("Task '{}' computed sldeobf intermediaries in {} ms.", this.getPath(), (System.nanoTime() - startIntermediarisation) / 1_000_000L);
             }
 
@@ -164,38 +171,31 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
         }
 
         if (this.getWithAutodeobf().get()) {
-            try {
-                de.geolykt.starloader.deobf.remapper.Remapper remapper = new de.geolykt.starloader.deobf.remapper.Remapper();
-                remapper.addTargets(deobfuscator.getClassNodesDirectly());
+            try (TinyV1MappingWriter mappingWriter = new TinyV1MappingWriter(this.getSpStarmapMappings().get().getAsFile().toPath(), "intermediary", "named")) {
                 long startSlStarmap = System.nanoTime();
                 AutodeobfRunner deobf;
 
                 String autodeobfVersion = this.getAutodeobfVersion().get();
                 if (autodeobfVersion.equals("5.0.2")) {
-                    deobf = new Autodeobf502(deobfuscator.getClassNodesDirectly(), remapper);
+                    deobf = new Autodeobf502(deobfuscator.getClassNodesDirectly(), mappingWriter);
                 } else {
                     throw new IllegalStateException("No Autodeobf implementation for version " + autodeobfVersion);
                 }
 
                 this.getLogger().info("Task '{}' uses autodeobf version {}", this.getPath(), deobf.getVersion());
-                try (Writer writer = Files.newBufferedWriter(this.getSpStarmapMappings().get().getAsFile().toPath(), StandardOpenOption.CREATE)) {
-                    writer.write("v1\tintermediary\tnamed\n");
-                    deobf.runAll(writer);
-                    for (Map.Entry<String, String> e : remapper.fixICNNames(new StringBuilder()).entrySet()) {
-                        writer.write("CLASS\t");
-                        writer.write(Objects.requireNonNull(e.getKey()));
-                        writer.write('\t');
-                        writer.write(Objects.requireNonNull(e.getValue()));
-                        writer.write('\n');
-                    }
-                    writer.flush();
-                    remapper.process();
+
+                StringBuilder sharedBuilder = new StringBuilder();
+                deobf.runAll();
+                mappingWriter.synchronizeICNNames(Objects.requireNonNull(deobfuscator.getClassNodesDirectly()), new StringBuilder());
+                Remapper remapper = new Remapper(mappingWriter);
+
+                for (ClassNode node : deobfuscator.getClassNodesDirectly()) {
+                    remapper.remapNode(Objects.requireNonNull(node), sharedBuilder);
                 }
 
                 if (this.getWithSLDeobf().get()) {
                     deobfuscator.invalidateNameCaches();
                     deobfuscator.applyInnerclasses();
-                    // TODO fix ICN names here
                 }
 
                 this.getLogger().info("Computed spStarmap in " + (System.nanoTime() - startSlStarmap) / 1_000_000L + " ms.");
