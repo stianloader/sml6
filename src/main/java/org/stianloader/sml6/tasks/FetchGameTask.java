@@ -10,7 +10,6 @@ import java.util.Locale;
 
 import javax.inject.Inject;
 
-import org.gradle.api.file.Directory;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFileProperty;
@@ -27,6 +26,7 @@ import org.gradle.api.tasks.TaskAction;
 import org.gradle.work.DisableCachingByDefault;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.stianloader.sml6.SML6GradlePlugin;
 
 @DisableCachingByDefault(because = "Already caches internally")
 public abstract class FetchGameTask extends ConventionTask {
@@ -79,15 +79,17 @@ public abstract class FetchGameTask extends ConventionTask {
     }
 
     public FetchGameTask() {
-        this.setGroup("SML6");
+        this.setGroup(SML6GradlePlugin.DEFAULT_TASK_GROUP);
+        this.setDescription("Fetch the game jar from Steam or another source.");
         this.getSteamApplicationName().convention("Galimulator");
         this.getSteamApplicationId().convention(808100);
         this.getSteamJarPath().convention("jar/galimulator-desktop.jar");
         this.getAggressiveCaching().convention(true);
+
         DirectoryProperty buildDir = this.getLayout().getBuildDirectory();
         Provider<String> taskNameProvider = this.getProviders().provider(this::getName);
-        Provider<Directory> cacheDir = buildDir.dir(taskNameProvider.map(s -> "sml6-" + s));
-        this.getOutputJar().convention(cacheDir.map(d -> d.file("galimulator-clean.jar")));
+        this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6/" + s)));
+        this.getOutputJar().convention(this.getOutputDirectory().file("galimulator-clean.jar"));
     }
 
     @TaskAction
@@ -182,6 +184,9 @@ public abstract class FetchGameTask extends ConventionTask {
 
     @Inject
     protected abstract ProjectLayout getLayout();
+
+    @Internal("Transitively affects other output locations. Not used directly.")
+    public abstract DirectoryProperty getOutputDirectory();
 
     @OutputFile
     public abstract RegularFileProperty getOutputJar();

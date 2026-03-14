@@ -38,6 +38,7 @@ import org.stianloader.deobf.IntermediaryGenerator;
 import org.stianloader.deobf.MethodReference;
 import org.stianloader.deobf.Oaktree;
 import org.stianloader.remapper.Remapper;
+import org.stianloader.sml6.SML6GradlePlugin;
 import org.stianloader.sml6.starplane.autodeobf.Autodeobf502;
 import org.stianloader.sml6.starplane.autodeobf.AutodeobfRunner;
 import org.stianloader.sml6.starplane.remapping.TinyV1MappingWriter;
@@ -46,14 +47,15 @@ import org.stianloader.sml6.starplane.remapping.TinyV1MappingWriter;
 public abstract class DeobfuscateGameTask extends ConventionTask {
 
     public DeobfuscateGameTask() {
-        this.setGroup("SML6");
+        this.setGroup(SML6GradlePlugin.DEFAULT_TASK_GROUP);
+        this.setDescription("Deobfuscate the game jar using stianloader-deobf/slintermediary (if choosen) and/or autodeobf/spstarmap (if choosen)");
         this.getAutodeobfVersion().convention("5.0.2");
         this.getWithAutodeobf().convention(true);
         this.getWithSLDeobf().convention(true);
         this.getWithSLDeobfRemapping().convention(this.getWithSLDeobf());
         DirectoryProperty buildDir = this.getLayout().getBuildDirectory();
         Provider<String> taskNameProvider = this.getProviders().provider(this::getName);
-        this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6-" + s)));
+        this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6/" + s)));
         this.getSlIntermediaryMappings().convention(this.getOutputDirectory().file("slintermediary.tiny"));
         this.getSpStarmapMappings().convention(this.getOutputDirectory().file("spstarmap.tiny"));
         this.getOutputJar().convention(this.getOutputDirectory().file("game-transformed.jar"));

@@ -18,6 +18,7 @@ SML6 provides the following tasks:
 - `org.stianloader.sml6.tasks.AggregateMappingsTask`
 - `org.stianloader.sml6.tasks.DeobfuscateGameTask`
 - `org.stianloader.sml6.tasks.FetchGameTask`
+- `org.stianloader.sml6.tasks.StripDependenciesTask`
 - `org.stianloader.sml6.tasks.XZTarBallerTask`
 - `org.stianloader.sml6.tasks.XZCompressTask`
 
@@ -115,6 +116,43 @@ SML6 expects games to be bundled as a single jar. However, many games are likely
 In that case, just create a merge request to SML6 to implement the desired functionality. I unfortunately
 lack the resources to do the job for you (after all, I won't be modding the same game as you).
 
+### StripDependenciesTask
+
+The DeobfuscateGameTask task defines following properties:
+- `configuration`: `Property<Configuration>`, stores the configuration used for dependency resolution
+- `inputJar` (**mandatory**): `RegularFileProperty`, the fat input jar
+- `outputDirectory`: `DirectoryProperty`, output files will be stored there by default
+- `outputJar`: `RegularFileProperty`, the stripped down jar will be stored there
+- `strippingDependenciesFiles`: `Property<FileCollection>`, defines a list of jars whoose contents should be removed from the input jar. By default, this will be the resolved `configuration` of this task.
+
+To declare dependencies which should get stripped from the input jar,
+use the `strip` method. While of course you can still declare dependencies manually
+by going through the `configuration` property, this would be an unnecssarily
+convoluted approach.
+
+Example configuration of this task:
+
+```groovy
+task stripGalim(type: org.stianloader.sml6.tasks.StripDependenciesTask, dependsOn: deobfGalim) {
+    inputJar = deobfGalim.outputJar
+
+    strip "com.badlogicgames.gdx:gdx-backend-lwjgl:1.9.11"
+    strip "com.badlogicgames.gdx:gdx-platform:1.9.11:natives-desktop"
+    strip "com.badlogicgames.gdx:gdx-tools:1.9.11"
+    strip "com.badlogicgames.gdxpay:gdx-pay-client:1.3.0"
+    strip "com.code-disaster.steamworks4j:steamworks4j-server:1.8.0"
+    strip "com.thoughtworks.xstream:xstream:1.4.7"
+    strip "xpp3:xpp3:1.1.4c"
+    strip 'junit:junit:4.13.2'
+
+    // Or use
+    // stripGalimulatorDefaults502()
+    // to use sensible defaults when working with Galimulator 5.0.2 (input jar still needs to be defined through)
+}
+```
+
+The dependency notation is the same as the notation you use within the gradle `dependencies` block.
+
 ### XZTarBallerTask
 
 The `XZTarBallerTask` class extends `Tar`.
@@ -131,7 +169,7 @@ If the base plugin is absent, sane defaults will be used.
 
 The XZTarBallerTask task is meant for shipping compressed mapping files. There is no real need
 for using this exact task, and other compression methods can be used.
-However, at the point of writing (2025-Oct-13), gslStarplane only supports .tar.xz and .xz
+However, at the point of writing (2025-10-13), gslStarplane only supports .tar.xz and .xz
 compression. Though that may be subject to change in future versions of gslStarplane.
 
 XZTarBallerTask is only meant to compress engima mapping directories. For other formats,

@@ -9,7 +9,7 @@ project.group = 'org.stianloader'
 base {
     archivesName = 'sml6'
 }
-project.version = '0.0.2'
+project.version = '0.1.0'
 
 java.targetCompatibility = compileJava.targetCompatibility = '17'
 java.sourceCompatibility = compileJava.sourceCompatibility = '17'
@@ -49,7 +49,7 @@ dependencies {
     implementation 'org.tukaani:xz:1.12'
 
     implementation 'org.stianloader:stianloader-remapper:0.2.0-a20251220'
-    implementation 'org.stianloader:stianloader-deobf:0.3.0-a20260307'
+    implementation 'org.stianloader:stianloader-deobf:0.3.0-a20260314'
     implementation 'org.stianloader:micromixin-remapper:0.2.2-a20251218'
 }
 
