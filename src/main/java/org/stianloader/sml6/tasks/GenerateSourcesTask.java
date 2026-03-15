@@ -2,6 +2,8 @@ package org.stianloader.sml6.tasks;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.zip.ZipEntry;
@@ -40,8 +43,13 @@ import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
+import org.gradle.internal.metaobject.DynamicInvokeResult;
+import org.gradle.internal.metaobject.PropertyAccess;
+import org.gradle.internal.metaobject.PropertyMixIn;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.java.decompiler.api.DecompilerOption;
 import org.jetbrains.java.decompiler.main.Fernflower;
 import org.jetbrains.java.decompiler.main.extern.IFernflowerLogger.Severity;
 import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
@@ -53,6 +61,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InnerClassNode;
+import org.slf4j.LoggerFactory;
 import org.stianloader.remapper.MappingLookup;
 import org.stianloader.sml6.SML6GradlePlugin;
 import org.stianloader.sml6.starplane.remapping.ChainMappingLookup;
@@ -69,45 +78,24 @@ import net.fabricmc.mappingio.tree.MemoryMappingTree;
 
 public abstract class GenerateSourcesTask extends ConventionTask {
 
-    public static abstract class VFDecompileOptions {
+    public static abstract class VFDecompileOptions implements PropertyMixIn, PropertyAccess {
         @NotNull
-        private Map<String, Object> vfOptions = new HashMap<>();
+        private Map<String, String> vfOptions = new HashMap<>();
+
+        @Nullable
+        private transient Map<String, Map.Entry<String, DecompilerOption.Type>> canonicalPropertyNames;
 
         public VFDecompileOptions() {
             this.vfOptions.put(IFernflowerPreferences.LOG_LEVEL, "WARN");
-            this.setDumpCodeLines(true);
-            this.setDumpOriginalLines(true);
-            this.setBytecodeSourceMapping(true);
+            this.vfOptions.put(IFernflowerPreferences.DUMP_CODE_LINES, "1");
+            this.vfOptions.put(IFernflowerPreferences.DUMP_ORIGINAL_LINES, "1");
+            this.vfOptions.put(IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, "1");
         }
 
         @NotNull
         @Input
-        public Map<String, Object> getVfOptions() {
+        public Map<String, String> getVfOptions() {
             return this.vfOptions;
-        }
-
-        @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
-        public VFDecompileOptions setBytecodeSourceMapping(boolean value) {
-            return this.setOption(IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, value);
-        }
-
-        @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
-        public VFDecompileOptions setDecompileGenericSignatures(boolean value) {
-            return this.setOption(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, value);
-        }
-
-        @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
-        public VFDecompileOptions setDumpCodeLines(boolean value) {
-            return this.setOption(IFernflowerPreferences.DUMP_CODE_LINES, value);
-        }
-
-        @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
-        public VFDecompileOptions setDumpOriginalLines(boolean value) {
-            return this.setOption(IFernflowerPreferences.DUMP_ORIGINAL_LINES, value);
         }
 
         @NotNull
@@ -117,16 +105,139 @@ public abstract class GenerateSourcesTask extends ConventionTask {
             return this;
         }
 
-        @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
-        public VFDecompileOptions setRemoveSynthetic(boolean value) {
-            return this.setOption(IFernflowerPreferences.REMOVE_SYNTHETIC, value);
+        @Override
+        @Internal("Gradle sugar")
+        public PropertyAccess getAdditionalProperties() {
+            return this;
         }
 
-        @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
-        public VFDecompileOptions setVerifyAnonymousClasses(boolean value) {
-            return this.setOption(IFernflowerPreferences.VERIFY_ANONYMOUS_CLASSES, value);
+        private Map<String, Map.Entry<String, DecompilerOption.Type>> getCanonicalPropertyNames() {
+            Map<String, Map.Entry<String, DecompilerOption.Type>> canonicalPropertyNames = this.canonicalPropertyNames;
+
+            if (canonicalPropertyNames != null) {
+                return canonicalPropertyNames;
+            }
+
+            canonicalPropertyNames = new HashMap<>();
+
+            for (Field field : IFernflowerPreferences.class.getDeclaredFields()) {
+                if (field.getType() != String.class
+                        || !Modifier.isStatic(field.getModifiers())
+                        || field.getName().equals("LINE_SEPARATOR_WIN")
+                        || field.getName().equals("LINE_SEPARATOR_UNX")) {
+                    continue;
+                }
+
+                try {
+                    IFernflowerPreferences.Type type = field.getAnnotation(IFernflowerPreferences.Type.class);
+                    Map.Entry<String, DecompilerOption.Type> entry = Map.entry((String) field.get(null), type == null ? DecompilerOption.Type.BOOLEAN : type.value());
+                    canonicalPropertyNames.put(field.getName().replaceAll("_", "").toLowerCase(Locale.ROOT), entry);
+                } catch (IllegalArgumentException | IllegalAccessException e) {
+                    throw new IllegalStateException("Unexpected reflective error", e);
+                }
+            }
+
+            this.canonicalPropertyNames = canonicalPropertyNames;
+
+            return canonicalPropertyNames;
+        }
+
+        @Override
+        public boolean hasProperty(String name) {
+            return this.getCanonicalPropertyNames().containsKey(name.toLowerCase(Locale.ROOT));
+        }
+
+        @Override
+        @Internal("Does not affect task")
+        public Map<String, ? extends @org.jspecify.annotations.Nullable Object> getProperties() {
+            Map<String, Object> values = new HashMap<>();
+
+            for (Map.Entry<String, Map.Entry<String, DecompilerOption.Type>> entry : this.getCanonicalPropertyNames().entrySet()) {
+                Object value = this.vfOptions.get(entry.getValue().getKey());
+
+                if (value == null) {
+                    value = IFernflowerPreferences.DEFAULTS.get(entry.getValue().getKey());
+                }
+
+                switch (entry.getValue().getValue()) {
+                case BOOLEAN:
+                    value = Integer.valueOf(value.toString()) != 0;
+                    break;
+                case INTEGER:
+                    value = Integer.valueOf(value.toString());
+                    break;
+                default:
+                    LoggerFactory.getLogger(GenerateSourcesTask.class).warn("Unknown decompiler option kind: {}", entry);
+                case STRING:
+                    break;
+                }
+
+                values.put(entry.getKey(), value);
+            }
+
+            return values;
+        }
+
+        @Override
+        public DynamicInvokeResult tryGetProperty(String name) {
+            Map.Entry<String, DecompilerOption.Type> canonicalName = this.getCanonicalPropertyNames().get(name.toLowerCase(Locale.ROOT));
+
+            if (canonicalName == null) {
+                return DynamicInvokeResult.notFound();
+            }
+
+            Object value = this.vfOptions.get(canonicalName.getKey());
+
+            if (value == null) {
+                value = IFernflowerPreferences.DEFAULTS.get(canonicalName.getKey());
+            }
+
+            switch (canonicalName.getValue()) {
+            case BOOLEAN:
+                value = Integer.valueOf(value.toString()) != 0;
+                break;
+            case INTEGER:
+                value = Integer.valueOf(value.toString());
+                break;
+            default:
+                LoggerFactory.getLogger(GenerateSourcesTask.class).warn("Unknown decompiler option kind: {}", canonicalName);
+            case STRING:
+                break;
+            }
+
+            return DynamicInvokeResult.found(value);
+        }
+
+        @Override
+        public DynamicInvokeResult trySetProperty(String name, @org.jspecify.annotations.Nullable Object value) {
+            Map.Entry<String, DecompilerOption.Type> canonicalName = this.getCanonicalPropertyNames().get(name.toLowerCase(Locale.ROOT));
+
+            if (canonicalName == null) {
+                return DynamicInvokeResult.notFound();
+            }
+
+            String vfValue;
+
+            switch (canonicalName.getValue()) {
+            case BOOLEAN:
+                vfValue = ((Boolean) value) ? "1" : "0";
+                break;
+            default:
+                LoggerFactory.getLogger(GenerateSourcesTask.class).warn("Unknown decompiler option kind: {}", canonicalName);
+            case INTEGER:
+            case STRING:
+                vfValue = value.toString();
+                break;
+            }
+
+            this.vfOptions.put(canonicalName.getKey(), vfValue);
+
+            return DynamicInvokeResult.found();
+        }
+
+        @Override
+        public DynamicInvokeResult trySetPropertyWithoutInstrumentation(String name, @org.jspecify.annotations.Nullable Object value) {
+            return this.trySetProperty(name, value);
         }
     }
 

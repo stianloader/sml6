@@ -168,6 +168,10 @@ task genSources(type: org.stianloader.sml6.tasks.GenerateSourcesTask, dependsOn:
 }
 ```
 
+Most of the properties in the `VFDecompileOptions` class are automatically generated using Gradle's `PropertyMixIn`.
+The automatically generated property names are case-insensitive versions of the constant names within
+https://github.com/Vineflower/vineflower/blob/35f2c6e2b65746d8fc4358ced8de03d440f2b80b/src/org/jetbrains/java/decompiler/main/extern/IFernflowerPreferences.java
+
 ### StripDependenciesTask
 
 The DeobfuscateGameTask task defines following properties:
