@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -37,10 +38,10 @@ public class DebugableMemberLister implements MemberLister {
 
         List<MemberRef> collected = new ArrayList<>();
         for (MethodNode method : node.methods) {
-            collected.add(new MemberRef(owner, method.name, method.desc));
+            collected.add(new MemberRef(owner, Objects.requireNonNull(method.name), Objects.requireNonNull(method.desc)));
         }
         for (FieldNode field : node.fields) {
-            collected.add(new MemberRef(owner, field.name, field.desc));
+            collected.add(new MemberRef(owner, Objects.requireNonNull(field.name), Objects.requireNonNull(field.desc)));
         }
         return collected;
     }
@@ -72,7 +73,7 @@ public class DebugableMemberLister implements MemberLister {
             if (desc != null && !desc.equals(method.desc)) {
                 continue;
             }
-            collected.add(new MemberRef(owner, method.name, method.desc));
+            collected.add(new MemberRef(owner, Objects.requireNonNull(method.name), Objects.requireNonNull(method.desc)));
         }
         for (FieldNode field : node.fields) {
             if (name != null && !name.equals(field.name)) {
@@ -81,7 +82,7 @@ public class DebugableMemberLister implements MemberLister {
             if (desc != null && !desc.equals(field.desc)) {
                 continue;
             }
-            collected.add(new MemberRef(owner, field.name, field.desc));
+            collected.add(new MemberRef(owner, Objects.requireNonNull(field.name), Objects.requireNonNull(field.desc)));
         }
         return collected;
     }

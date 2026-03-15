@@ -18,6 +18,7 @@ SML6 provides the following tasks:
 - `org.stianloader.sml6.tasks.AggregateMappingsTask`
 - `org.stianloader.sml6.tasks.DeobfuscateGameTask`
 - `org.stianloader.sml6.tasks.FetchGameTask`
+- `org.stianloader.sml6.tasks.GenerateSourcesTask`
 - `org.stianloader.sml6.tasks.StripDependenciesTask`
 - `org.stianloader.sml6.tasks.XZTarBallerTask`
 - `org.stianloader.sml6.tasks.XZCompressTask`
@@ -116,10 +117,61 @@ SML6 expects games to be bundled as a single jar. However, many games are likely
 In that case, just create a merge request to SML6 to implement the desired functionality. I unfortunately
 lack the resources to do the job for you (after all, I won't be modding the same game as you).
 
+### GenerateSourcesTask
+
+The GenerateSourcesTask task defines following properties:
+- `decompileOptions`: `VFDecompileOptions`, the options passed to the Vineflower decompiler
+- `inputJar` (**mandatory**): `RegularFileProperty`, the obfuscated input jar
+- `javadocSources`: `ListProperty<MIOMappingsProvider>`, 
+- `libraryClasspath`: `Property<@Nullable FileCollection>`, a file collection that describes the library path forwarded to Vineflower. This file collection should only contain jars, other file types might break. Note: Default value is the resolved contents of the `transitiveDependencies` property.
+- `lineRemappedOutputJar`: `RegularFileProperty`, the file in which the line remapped jar should be stored. If VF was configured to remap `LineNumberNode`s, then this output file's line numbers will correspond to the decompiled source code. Otherwise, this is the input jar.
+- `outputDirectory`: `DirectoryProperty`, output files will be stored there by default
+- `outputSourcesJar`: `RegularFileProperty`, the decompiled output jar will be stored at this location.
+- `transitiveDependencies`: `Provider<@Nullable Configuration>`, a resolveable `Configuration` object that is the default source of the `libraryClasspath` property.
+
+The GenerateSourcesTask has following subclass which is in turn used to configure the task further:
+- `org.stianloader.sml6.tasks.GenerateSourcesTask.VFDecompileOptions`
+
+The GenerateSourcesTask decompiles the given input jar, and produces a sources jar for that jar, as well as
+a jar that contains line number information that corresponds to the sources jar (as well as possible that is,
+the tooling makes plenty of mistakes for now).
+
+The library classpath passed to the decompiler mostly affects `@Override` annotations, though it may affect
+other small things such as casts when the type hierarchy isn't certain due to missing libraries or when
+generic signatures aren't known.
+
+This task provides the following methods to more easily configure the task:
+- `addJavadocSourcesDir(Action<MIOMappingsDirectoryProvider> configurationClosure)`: Register a `MIOMappingsDirectoryProvider` as a javadoc source.
+- `addJavadocSourcesFile(Action<MIOMappingsFileProvider> configurationClosure)`: Register a `MIOMappingsFileProvider` as a javadoc source.
+- `decompileOptions(Action<VFDecompileOptions> action)`: Configure the decompiler options as a closure
+- `getDecompileOptions()`: Get the `VFDecompileOptions` object used for configuration.
+
+Example configuration:
+```groovy
+task genSources(type: org.stianloader.sml6.tasks.GenerateSourcesTask, dependsOn: stripGalim) {
+    inputJar = stripGalim.outputJar
+    dependsOn tarballXZ
+    transitiveDependencies = stripGalim.configuration
+
+    decompileOptions {
+        removeSynthetic = false
+        verifyAnonymousClasses = true
+        setOption("include-runtime", true)
+    }
+
+    addJavadocSourcesFile {
+        containerFormat = TAR_XZ
+        mappingFormat = ENIGMA
+        mappingSource = project.file(tarballXZ.archiveFile.get().getAsFile())
+        dstNamespaceId = -1 // Source namespace
+    }
+}
+```
+
 ### StripDependenciesTask
 
 The DeobfuscateGameTask task defines following properties:
-- `configuration`: `Property<Configuration>`, stores the configuration used for dependency resolution
+- `configuration`: `Property<Configuration>`, stores the configuration used for dependency resolution (note: consumed indirectly through `strippingDependenciesFiles` for fingerprinting reasons)
 - `inputJar` (**mandatory**): `RegularFileProperty`, the fat input jar
 - `outputDirectory`: `DirectoryProperty`, output files will be stored there by default
 - `outputJar`: `RegularFileProperty`, the stripped down jar will be stored there
@@ -240,3 +292,53 @@ publishing {
     }
 }
 ```
+
+## Task configuration objects
+
+### MIOMappingsProvider
+
+Fully qualfiied name: `org.stianloader.sml6.tasks.config.MIOMappingsProvider`
+
+The `MIOMappingsProvider` class defines following properties:
+- `dstNamespaceId`: `Property<Integer>` (optional, default: 0), the destination namespace id according to MIO. Should be equal to the namespace of the input jar.
+- `srcNamespaceId`: `Property<Integer>` (optional, default: -1), the source namespace id according to MIO. Not used in the javadocs process, but is used in the remapping process.
+- `mappingFormat` (**mandatory**): `Property<net.fabricmc.mappingio.format.MappingFormat>`, the used mapping format. Common values: `ENIGMA_DIR`, `TINY_FILE`, or `TINY_2_FILE`. Depends on the concrete input file though.
+
+Instances of `MIOMappingsProvider`'s subclasses need to be created through gradle's object factory (or just use helper methods).
+That being said, attempting to instantiate instances of this classes' subclasses is not exactly recommended.
+Creating instances of `MIOMappingsProvider` directly will fail, as for all intents and purposes it is an abstract class.
+
+This class uses gradle's `PropertyMixIn` struct to make the `MappingFormat` and `MappingContainer` constants easily available as read-only constants.
+These properties are case-insensitive. Further, following aliases are applied:
+- `enigma` for `ENIGMA_DIR`
+- `tiny` for `TINY_FILE`
+- `tiny2` for `TINY_2_FILE`
+- `tinyv2` for `TINY_2_FILE`
+These aliases are also case-insensitive. Also please note that `PropertyMixIn` has little effects outside of closures,
+where you'd need to use the fully qualified path (or import statements but those are malpractice in stianloader buildscripts).
+Hence, one should prefer to configure things on demand using closures.
+
+### MIOMappingsDirectoryProvider
+
+Fully qualfiied name: `org.stianloader.sml6.tasks.config.MIOMappingsDirectoryProvider`
+
+This class extends `MIOMappingsProvider`, inheriting its properties.
+
+The `MIOMappingsDirectoryProvider` class also defines following properties:
+- `mappingSource` (**mandatory**): `DirectoryProperty` (mandatory), the location of the mappings directory
+
+Instances of this class need to be created through gradle's object factory.
+
+### MIOMappingsFileProvider
+
+Fully qualfiied name: `org.stianloader.sml6.tasks.config.MIOMappingsFileProvider`
+
+This class extends `MIOMappingsProvider`, inheriting its properties.
+
+The `MIOMappingsFileProvider` class defines following properties:
+- `mappingSource` (**mandatory**): `RegularFileProperty`, the location of the mappings file to use
+- `containerFormat` (**mandatory**): `Property<org.stianloader.sml6.starplane.remapping.MIOContainerFormat.MappingContainer>`, the container format (either `PLAIN`, `TAR_XZ`, or `XZ`)
+
+Keep in mind that `MappingContainer` constants are easily exposed through `PropertyMixIn`, see the documentation for `MIOMappingsProvider`.
+
+Instances of this class need to be created through gradle's object factory.

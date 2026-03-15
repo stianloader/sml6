@@ -88,7 +88,7 @@ public class StarplaneAnnotationRemapper {
                         StarplaneAnnotationRemapper.LOGGER.error("Erroneous annotation key: " + annotation.values.get(0) + " for RemapClassReference. Are you depending on the wrong starplane-annotations version?");
                         break;
                     }
-                    classMapRequests.put(new MemberRef(node.name, field.name, field.desc), typeName);
+                    classMapRequests.put(new MemberRef(Objects.requireNonNull(node.name), Objects.requireNonNull(field.name), Objects.requireNonNull(field.desc)), Objects.requireNonNull(typeName));
                 } else if (annotation.desc.equals("Lde/geolykt/starloader/starplane/annotations/RemapMemberReference;")) {
                     if (annotation.values == null) {
                         StarplaneAnnotationRemapper.LOGGER.error("Field {}.{}:{} is annotated with de/geolykt/starloader/starplane/annotations/RemapMemberReference, but does not define any of the required values.", node.name, field.name, field.desc);
@@ -169,7 +169,7 @@ public class StarplaneAnnotationRemapper {
                     }
 
                     MemberRef targetTriple = new MemberRef(typeName, Objects.requireNonNull(memberName, "memberName == null"), Objects.requireNonNull(memberDesc, "memberDesc == null"));
-                    MemberRef fieldTriple = new MemberRef(node.name, field.name, field.desc);
+                    MemberRef fieldTriple = new MemberRef(Objects.requireNonNull(node.name), Objects.requireNonNull(field.name), Objects.requireNonNull(field.desc));
                     memberMapFormat.put(fieldTriple, format);
                     memberMapRequests.put(fieldTriple, targetTriple);
 
@@ -236,7 +236,7 @@ public class StarplaneAnnotationRemapper {
                     StarplaneAnnotationRemapper.LOGGER.error("Method {}.{} {} contains a call to ReferenceSource.getStringValue() that is not immediately assigned to a field.", node.name, method.name, method.desc);
                     continue;
                 }
-                MemberRef assignmentTriple = new MemberRef(((FieldInsnNode) nextInsn).owner, ((FieldInsnNode) nextInsn).name, ((FieldInsnNode) nextInsn).desc);
+                MemberRef assignmentTriple = new MemberRef(Objects.requireNonNull(((FieldInsnNode) nextInsn).owner), Objects.requireNonNull(((FieldInsnNode) nextInsn).name), Objects.requireNonNull(((FieldInsnNode) nextInsn).desc));
                 String cl = classMapRequests.get(assignmentTriple);
                 String replacementLdc;
                 if (cl != null) {

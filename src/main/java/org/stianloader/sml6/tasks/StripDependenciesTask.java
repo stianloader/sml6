@@ -84,7 +84,7 @@ public abstract class StripDependenciesTask extends ConventionTask {
     public abstract Property<FileCollection> getStrippingDependenciesFiles();
 
     @TaskAction
-    public void reduceJar() {
+    public void stripJar() {
         Set<String> filteringFileNames = new HashSet<>();
 
         boolean failing = false;

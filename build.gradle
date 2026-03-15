@@ -47,6 +47,8 @@ dependencies {
 
     // https://mvnrepository.com/artifact/org.tukaani/xz
     implementation 'org.tukaani:xz:1.12'
+    // https://mvnrepository.com/artifact/org.glavo.kala/kala-compress-archivers-tar
+    implementation 'org.glavo.kala:kala-compress-archivers-tar:1.27.1-1'
 
     implementation 'org.stianloader:stianloader-remapper:0.2.0-a20251220'
     implementation 'org.stianloader:stianloader-deobf:0.3.0-a20260314'
