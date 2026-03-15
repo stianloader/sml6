@@ -226,7 +226,11 @@ public abstract class GenerateSourcesTask extends ConventionTask {
                 LoggerFactory.getLogger(GenerateSourcesTask.class).warn("Unknown decompiler option kind: {}", canonicalName);
             case INTEGER:
             case STRING:
-                vfValue = value.toString();
+                if (value instanceof Boolean) {
+                    vfValue = ((Boolean) value) ? "1" : "0";
+                } else {
+                    vfValue = value.toString();
+                }
                 break;
             }
 
