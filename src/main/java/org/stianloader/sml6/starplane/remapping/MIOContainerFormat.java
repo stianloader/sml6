@@ -99,7 +99,7 @@ public class MIOContainerFormat {
             @Override
             public void read(@NotNull MappingFormat format, @NotNull Path path, @NotNull MappingVisitor visitor) throws IOException {
                 if (format != MappingFormat.ENIGMA_DIR) {
-                    throw new IllegalArgumentException("The TAR_XZ format is only supported for the ENIGMA_DIR format. Instead, the " + format + " is being used.");
+                    throw new IllegalArgumentException("The TAR_XZ format is only supported for the ENIGMA_DIR format. Instead, the " + format + " mapping format is being used.");
                 }
 
                 try (ArchiveVisitor archiveVisitor = new ArchiveVisitor(visitor);

@@ -62,6 +62,7 @@ import org.stianloader.sml6.starplane.remapping.RASRemapper;
 import org.stianloader.sml6.starplane.remapping.ReadOnlyMIOMappingLookup;
 import org.stianloader.sml6.starplane.remapping.ReadOnlyMappingLookupSink;
 import org.stianloader.sml6.starplane.remapping.StarplaneAnnotationRemapper;
+import org.stianloader.sml6.tasks.config.MIOMappingsConfigurationProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsDirectoryProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsFileProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsProvider;
@@ -73,6 +74,16 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
 
     public RemapJarTask() {
         this.getLibraryJars().convention(this.getProject().files()); // Empty collection by default
+    }
+
+    public void addMappingsConfiguration(@NotNull Action<@NotNull MIOMappingsConfigurationProvider> configurationClosure) {
+        Provider<MIOMappingsConfigurationProvider> provider = this.getProviders().provider(() -> {
+            MIOMappingsConfigurationProvider fileProvider = this.getObjectFactory().newInstance(MIOMappingsConfigurationProvider.class);
+            configurationClosure.execute(fileProvider);
+            return fileProvider;
+        });
+
+        this.getMappings().add(provider);
     }
 
     public void addMappingsDirectory(@NotNull Action<@NotNull MIOMappingsDirectoryProvider> configurationClosure) {
@@ -126,7 +137,7 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                 throw new UncheckedIOException("Cannot read mappings from mappings file", e);
             }
 
-            lookups.add(new ReadOnlyMIOMappingLookup(mappingTree, provider.getSrcNamespaceId().get(), provider.getDstNamespaceId().get(), true));
+            lookups.add(new ReadOnlyMIOMappingLookup(mappingTree, provider.getSrcNamespaceId().get(), provider.getDstNamespaceId().get(), false));
         }
 
         NavigableMap<Integer, Map<String, ClassNode>> libraryNodes = new TreeMap<>();

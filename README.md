@@ -142,6 +142,7 @@ other small things such as casts when the type hierarchy isn't certain due to mi
 generic signatures aren't known.
 
 This task provides the following methods to more easily configure the task:
+- `addJavadocSourcesConfiguration(Action<MIOMappingsConfigurationProvider> configurationClosure)`: Register a `MIOMappingsConfigurationProvider` as javadoc source. This is probably the method you'll use the most of the addJavadocSources[…] trio.
 - `addJavadocSourcesDir(Action<MIOMappingsDirectoryProvider> configurationClosure)`: Register a `MIOMappingsDirectoryProvider` as a javadoc source.
 - `addJavadocSourcesFile(Action<MIOMappingsFileProvider> configurationClosure)`: Register a `MIOMappingsFileProvider` as a javadoc source.
 - `decompileOptions(Action<VFDecompileOptions> action)`: Configure the decompiler options as a closure
@@ -186,6 +187,7 @@ The `RemapJarTask` is a task which remaps an input jar (it also remaps mixins an
 more. The `RemapJarTask` does not modify any of it's inputs (this is needed for caching to work in a sense).
 
 This task provides the following methods to more easily configure the task:
+- `addMappingsConfiguration(Action<MIOMappingsConfigurationProvider> configurationClosure)`: Register a `MIOMappingsConfigurationProvider` as mappings source. This is probably the method you'll use the most of the trio.
 - `addMappingsDir(Action<MIOMappingsDirectoryProvider> configurationClosure)`: Register a `MIOMappingsDirectoryProvider` as a mappings source.
 - `addMappingsFile(Action<MIOMappingsFileProvider> configurationClosure)`: Register a `MIOMappingsFileProvider` as a mappings source.
 
@@ -359,9 +361,24 @@ These aliases are also case-insensitive. Also please note that `PropertyMixIn` h
 where you'd need to use the fully qualified path (or import statements but those are malpractice in stianloader buildscripts).
 Hence, one should prefer to configure things on demand using closures.
 
+### MIOMappingsConfigurationProvider
+
+Fully qualified name: `org.stianloader.sml6.tasks.config.MIOMappingsConfigurationProvider`
+
+This class extends `MIOMappingsProvider`, inheriting its properties.
+
+The `MIOMappingsFileProvider` class defines following properties:
+- `mappingSource`: `Property<FileCollection>`, the location of the mappings file(s) to use (each file will be treated as it's own unit and summed up). This property is inferred through the `configuration` property.
+- `configuration` (**mandatory**): `Property<Configuration>`, the configuration used to infer the `mappingSource` property.
+- `containerFormat` (**mandatory**): `Property<org.stianloader.sml6.starplane.remapping.MIOContainerFormat.MappingContainer>`, the container format (either `PLAIN`, `TAR_XZ`, or `XZ`)
+
+Keep in mind that `MappingContainer` constants are easily exposed through `PropertyMixIn`, see the documentation for `MIOMappingsProvider`.
+
+Instances of this class need to be created through gradle's object factory. Passing a `Project` instance as an argument.
+
 ### MIOMappingsDirectoryProvider
 
-Fully qualfiied name: `org.stianloader.sml6.tasks.config.MIOMappingsDirectoryProvider`
+Fully qualified name: `org.stianloader.sml6.tasks.config.MIOMappingsDirectoryProvider`
 
 This class extends `MIOMappingsProvider`, inheriting its properties.
 
@@ -372,7 +389,7 @@ Instances of this class need to be created through gradle's object factory.
 
 ### MIOMappingsFileProvider
 
-Fully qualfiied name: `org.stianloader.sml6.tasks.config.MIOMappingsFileProvider`
+Fully qualified name: `org.stianloader.sml6.tasks.config.MIOMappingsFileProvider`
 
 This class extends `MIOMappingsProvider`, inheriting its properties.
 

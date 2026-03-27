@@ -24,6 +24,7 @@ final class MappingExtraProperties implements PropertyAccess {
         // Define commonly used aliases
         this.properties.put("enigma", MappingFormat.ENIGMA_DIR);
         this.properties.put("tiny", MappingFormat.TINY_FILE);
+        this.properties.put("tiny_2", MappingFormat.TINY_2_FILE);
         this.properties.put("tiny2", MappingFormat.TINY_2_FILE);
         this.properties.put("tinyv2", MappingFormat.TINY_2_FILE);
 

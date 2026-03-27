@@ -71,6 +71,7 @@ import org.stianloader.sml6.starplane.remapping.ReadOnlyMIOMappingLookup;
 import org.stianloader.sml6.starplane.sourcegen.EnhancedJarSaver;
 import org.stianloader.sml6.starplane.sourcegen.FernflowerLoggerAdapter;
 import org.stianloader.sml6.starplane.sourcegen.JavadocSource;
+import org.stianloader.sml6.tasks.config.MIOMappingsConfigurationProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsDirectoryProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsFileProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsProvider;
@@ -81,30 +82,17 @@ import net.fabricmc.mappingio.tree.MemoryMappingTree;
 public abstract class GenerateSourcesTask extends ConventionTask {
 
     public static abstract class VFDecompileOptions implements PropertyMixIn, PropertyAccess {
-        @NotNull
-        private Map<String, String> vfOptions = new HashMap<>();
-
         @Nullable
         private transient Map<String, Map.Entry<String, DecompilerOption.Type>> canonicalPropertyNames;
+
+        @NotNull
+        private Map<String, String> vfOptions = new HashMap<>();
 
         public VFDecompileOptions() {
             this.vfOptions.put(IFernflowerPreferences.LOG_LEVEL, "WARN");
             this.vfOptions.put(IFernflowerPreferences.DUMP_CODE_LINES, "1");
             this.vfOptions.put(IFernflowerPreferences.DUMP_ORIGINAL_LINES, "1");
             this.vfOptions.put(IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, "1");
-        }
-
-        @NotNull
-        @Input
-        public Map<String, String> getVfOptions() {
-            return this.vfOptions;
-        }
-
-        @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
-        public VFDecompileOptions setOption(@NotNull String key, boolean value) {
-            this.vfOptions.put(key, value ? "1" : "0");
-            return this;
         }
 
         @Override
@@ -145,11 +133,6 @@ public abstract class GenerateSourcesTask extends ConventionTask {
         }
 
         @Override
-        public boolean hasProperty(String name) {
-            return this.getCanonicalPropertyNames().containsKey(name.toLowerCase(Locale.ROOT));
-        }
-
-        @Override
         @Internal("Does not affect task")
         public Map<String, ? extends @org.jspecify.annotations.Nullable Object> getProperties() {
             Map<String, Object> values = new HashMap<>();
@@ -178,6 +161,24 @@ public abstract class GenerateSourcesTask extends ConventionTask {
             }
 
             return values;
+        }
+
+        @NotNull
+        @Input
+        public Map<String, String> getVfOptions() {
+            return this.vfOptions;
+        }
+
+        @Override
+        public boolean hasProperty(String name) {
+            return this.getCanonicalPropertyNames().containsKey(name.toLowerCase(Locale.ROOT));
+        }
+
+        @NotNull
+        @Contract(pure = false, mutates = "this", value = "_ -> this")
+        public VFDecompileOptions setOption(@NotNull String key, boolean value) {
+            this.vfOptions.put(key, value ? "1" : "0");
+            return this;
         }
 
         @Override
@@ -369,6 +370,16 @@ public abstract class GenerateSourcesTask extends ConventionTask {
         this.getLibraryClasspath().convention(this.getTransitiveDependencies().map(config -> {
             return this.getProject().files(config.resolve());
         }));
+    }
+
+    public void addJavadocSourcesConfiguration(@NotNull Action<@NotNull MIOMappingsConfigurationProvider> configurationClosure) {
+        Provider<MIOMappingsConfigurationProvider> provider = this.getProviders().provider(() -> {
+            MIOMappingsConfigurationProvider fileProvider = this.getObjectFactory().newInstance(MIOMappingsConfigurationProvider.class);
+            configurationClosure.execute(fileProvider);
+            return fileProvider;
+        });
+
+        this.getJavadocSources().add(provider);
     }
 
     public void addJavadocSourcesDir(@NotNull Action<@NotNull MIOMappingsDirectoryProvider> configurationClosure) {

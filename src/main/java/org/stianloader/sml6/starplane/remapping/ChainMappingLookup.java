@@ -208,6 +208,6 @@ public class ChainMappingLookup implements MappingLookup, CommentLookup {
             System.out.println("\t-\t" + ".".repeat(64) + "\t" + srcOwner + '.' + srcName + srcDesc + " -> " + paramName + "@" + paramIndex + "\n");
         }
 
-         return srcName;
+         return paramName;
     }
 }
