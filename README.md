@@ -19,6 +19,7 @@ SML6 provides the following tasks:
 - `org.stianloader.sml6.tasks.DeobfuscateGameTask`
 - `org.stianloader.sml6.tasks.FetchGameTask`
 - `org.stianloader.sml6.tasks.GenerateSourcesTask`
+- `org.stianloader.sml6.tasks.RemapJarTask`
 - `org.stianloader.sml6.tasks.StripDependenciesTask`
 - `org.stianloader.sml6.tasks.XZTarBallerTask`
 - `org.stianloader.sml6.tasks.XZCompressTask`
@@ -162,7 +163,7 @@ task genSources(type: org.stianloader.sml6.tasks.GenerateSourcesTask, dependsOn:
     addJavadocSourcesFile {
         containerFormat = TAR_XZ
         mappingFormat = ENIGMA
-        mappingSource = project.file(tarballXZ.archiveFile.get().getAsFile())
+        mappingSource = tarballXZ.archiveFile
         dstNamespaceId = -1 // Source namespace
     }
 }
@@ -172,10 +173,46 @@ Most of the properties in the `VFDecompileOptions` class are automatically gener
 The automatically generated property names are case-insensitive versions of the constant names within
 https://github.com/Vineflower/vineflower/blob/35f2c6e2b65746d8fc4358ced8de03d440f2b80b/src/org/jetbrains/java/decompiler/main/extern/IFernflowerPreferences.java
 
+### RemapJarTask
+
+The RemapJarTask task defines following properties:
+- `inputJar` (**mandatory**): `RegularFileProperty`, the input jar to remap
+- `libraryJars`: `Property<FileCollection>`, defines a list of jars whoose contents should be used to inferr member realms. Especially required for mixin remapping.
+- `mappings`: `ListProperty<MIOMappingsProvider>`, the mappings to use. See `addMappingsDir`/`addMappingsFile` for convinience methods to register a mappings directory/file.
+
+The `RemapJarTask` extends `AbstractArtifactTask`, inheriting all it's properties.
+
+The `RemapJarTask` is a task which remaps an input jar (it also remaps mixins and reversible-access-setters definitions), doing nothing
+more. The `RemapJarTask` does not modify any of it's inputs (this is needed for caching to work in a sense).
+
+This task provides the following methods to more easily configure the task:
+- `addMappingsDir(Action<MIOMappingsDirectoryProvider> configurationClosure)`: Register a `MIOMappingsDirectoryProvider` as a mappings source.
+- `addMappingsFile(Action<MIOMappingsFileProvider> configurationClosure)`: Register a `MIOMappingsFileProvider` as a mappings source.
+
+Example task configuration:
+```groovy
+task remapGalim(type: org.stianloader.sml6.tasks.RemapJarTask, dependsOn: stripGalim) {
+    inputJar = stripGalim.outputJar
+    libraryJars = stripGalim.strippingDependenciesFiles
+
+    archiveBaseName = "galimulator"
+    archiveClassifier = "remapped"
+    archiveVersion = deobfGalim.autodeobfVersion
+    destinationDirectory = layout.buildDirectory.dir("sml6/remapGalim")
+
+    addMappingsFile {
+        containerFormat = TAR_XZ
+        mappingFormat = ENIGMA
+        mappingSource = tarballXZ.archiveFile
+    }
+}
+```
+
 ### StripDependenciesTask
 
 The DeobfuscateGameTask task defines following properties:
 - `configuration`: `Property<Configuration>`, stores the configuration used for dependency resolution (note: consumed indirectly through `strippingDependenciesFiles` for fingerprinting reasons)
+- `filteringEntryNames`: `ListProperty<String>`, stores a list of entry names that are stripped from the output jar. Wildcards, regex, and similar are not supported. Intended to be used to remove singular resources you don't know the dependency of (or are otherwise undesireable).
 - `inputJar` (**mandatory**): `RegularFileProperty`, the fat input jar
 - `outputDirectory`: `DirectoryProperty`, output files will be stored there by default
 - `outputJar`: `RegularFileProperty`, the stripped down jar will be stored there

@@ -7,7 +7,9 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -17,6 +19,7 @@ import java.util.zip.ZipOutputStream;
 import javax.inject.Inject;
 
 import org.gradle.api.Action;
+import org.gradle.api.NamedDomainObjectProvider;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.file.DirectoryProperty;
@@ -24,10 +27,12 @@ import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.tasks.CacheableTask;
+import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
@@ -53,7 +58,11 @@ public abstract class StripDependenciesTask extends ConventionTask {
         this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6/" + s)));
         this.getOutputJar().convention(this.getOutputDirectory().file("game-reduced.jar"));
 
-        this.getConfiguration().convention(this.getProject().getConfigurations().register("sml6-" + this.getName()));
+        NamedDomainObjectProvider<Configuration> defaultConfigProvider = this.getProject().getConfigurations().register("sml6-" + this.getName());
+        defaultConfigProvider.configure((x) -> {
+            x.setDescription("Default confguration used for task '" + StripDependenciesTask.this.getName() + "'");
+        });
+        this.getConfiguration().convention(defaultConfigProvider);
         this.getStrippingDependenciesFiles().convention(this.getConfiguration().map(config -> {
             return this.getProject().files(config.resolve());
         }));
@@ -61,6 +70,10 @@ public abstract class StripDependenciesTask extends ConventionTask {
 
     @Internal("Source of #getStrippingDependenciesFiles, not used directly as it is not fingerprintable.")
     public abstract Property<Configuration> getConfiguration();
+
+    @Input
+    @Optional
+    public abstract ListProperty<String> getFilteringEntryNames();
 
     @InputFile
     @PathSensitive(PathSensitivity.RELATIVE)
@@ -83,9 +96,63 @@ public abstract class StripDependenciesTask extends ConventionTask {
     @PathSensitive(PathSensitivity.ABSOLUTE)
     public abstract Property<FileCollection> getStrippingDependenciesFiles();
 
+    public Dependency strip(@NotNull Object notation) {
+        Objects.requireNonNull(notation, "'notation' may not be null");
+
+        this.getConfiguration().disallowChanges();
+        Dependency dep = this.getProject().getDependencies().create(notation);
+        this.getConfiguration().get().getDependencies().add(dep);
+
+        return dep;
+    }
+
+    public Dependency strip(@NotNull Object notation, Action<Dependency> closure) {
+        Objects.requireNonNull(notation, "'notation' may not be null");
+
+        this.getConfiguration().disallowChanges();
+        Dependency dep = this.getProject().getDependencies().create(notation);
+        closure.execute(dep);
+        this.getConfiguration().get().getDependencies().add(dep);
+
+        return dep;
+    }
+
+    public Dependency strip(@NotNull Object notation, Closure<?> closure) {
+        Objects.requireNonNull(notation, "'notation' may not be null");
+
+        this.getConfiguration().disallowChanges();
+        Dependency dep = this.getProject().getDependencies().create(notation, closure);
+        this.getConfiguration().get().getDependencies().add(dep);
+
+        return dep;
+    }
+
+    /**
+     * Strip the default dependencies for Galimulator 5.0.2
+     */
+    public void stripGalimulatorDefaults502() {
+        this.strip("com.badlogicgames.gdx:gdx-backend-lwjgl:1.9.11");
+        this.strip("com.badlogicgames.gdx:gdx-platform:1.9.11:natives-desktop");
+        this.strip("com.badlogicgames.gdx:gdx-tools:1.9.11");
+        this.strip("com.badlogicgames.gdxpay:gdx-pay-client:1.3.0");
+        this.strip("com.code-disaster.steamworks4j:steamworks4j-server:1.8.0");
+        this.strip("com.thoughtworks.xstream:xstream:1.4.7");
+        this.strip("xpp3:xpp3:1.1.4c");
+        this.strip("junit:junit:4.13.2");
+
+        // The exclusions are technically not necessary, but we exclude them in order to avoid duplicate entries on the classpath
+        // This is mostly only useful for other tasks using the configuration as a transient input.
+        this.getConfiguration().get().exclude(Map.of("group", "xmlpull", "module", "xmlpull"));
+        this.getConfiguration().get().exclude(Map.of("group", "xpp3", "module", "xpp3_min"));
+        this.getFilteringEntryNames().add("XPP3_1.1.4c_MIN_VERSION");
+
+        // simplevoronoi seems to be source-shaded into Galimulator, and there is no maven artifact out there for it.
+        // hence we will treat that dependency like any other
+    }
+
     @TaskAction
     public void stripJar() {
-        Set<String> filteringFileNames = new HashSet<>();
+        Set<String> filteringFileNames = new HashSet<>(this.getFilteringEntryNames().getOrElse(Collections.emptyList()));
 
         boolean failing = false;
 
@@ -132,53 +199,5 @@ public abstract class StripDependenciesTask extends ConventionTask {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    public Dependency strip(@NotNull Object notation) {
-        Objects.requireNonNull(notation, "'notation' may not be null");
-
-        this.getConfiguration().disallowChanges();
-        Dependency dep = this.getProject().getDependencies().create(notation);
-        this.getConfiguration().get().getDependencies().add(dep);
-
-        return dep;
-    }
-
-    public Dependency strip(@NotNull Object notation, Action<Dependency> closure) {
-        Objects.requireNonNull(notation, "'notation' may not be null");
-
-        this.getConfiguration().disallowChanges();
-        Dependency dep = this.getProject().getDependencies().create(notation);
-        closure.execute(dep);
-        this.getConfiguration().get().getDependencies().add(dep);
-
-        return dep;
-    }
-
-    public Dependency strip(@NotNull Object notation, Closure<?> closure) {
-        Objects.requireNonNull(notation, "'notation' may not be null");
-
-        this.getConfiguration().disallowChanges();
-        Dependency dep = this.getProject().getDependencies().create(notation, closure);
-        this.getConfiguration().get().getDependencies().add(dep);
-
-        return dep;
-    }
-
-    /**
-     * Strip the default dependencies for Galimulator 5.0.2
-     */
-    public void stripGalimulatorDefaults502() {
-        this.strip("com.badlogicgames.gdx:gdx-backend-lwjgl:1.9.11");
-        this.strip("com.badlogicgames.gdx:gdx-platform:1.9.11:natives-desktop");
-        this.strip("com.badlogicgames.gdx:gdx-tools:1.9.11");
-        this.strip("com.badlogicgames.gdxpay:gdx-pay-client:1.3.0");
-        this.strip("com.code-disaster.steamworks4j:steamworks4j-server:1.8.0");
-        this.strip("com.thoughtworks.xstream:xstream:1.4.7");
-        this.strip("xpp3:xpp3:1.1.4c");
-        this.strip("junit:junit:4.13.2");
-
-        // simplevoronoi seems to be source-shaded into Galimulator, and there is no maven artifact out there for it.
-        // hence we will treat that dependency like any other
     }
 }

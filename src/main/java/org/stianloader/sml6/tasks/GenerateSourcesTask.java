@@ -33,6 +33,7 @@ import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
@@ -63,6 +64,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.slf4j.LoggerFactory;
 import org.stianloader.remapper.MappingLookup;
+import org.stianloader.sml6.GradleUtilities;
 import org.stianloader.sml6.SML6GradlePlugin;
 import org.stianloader.sml6.starplane.remapping.ChainMappingLookup;
 import org.stianloader.sml6.starplane.remapping.ReadOnlyMIOMappingLookup;
@@ -262,13 +264,7 @@ public abstract class GenerateSourcesTask extends ConventionTask {
         try (ZipInputStream zipIn = new ZipInputStream(Files.newInputStream(unmappedInput), StandardCharsets.UTF_8);
                 ZipOutputStream zipOutputStream = new ZipOutputStream(Files.newOutputStream(linemappedOutput), StandardCharsets.UTF_8)) {
             for (ZipEntry entry = zipIn.getNextEntry(); entry != null; entry = zipIn.getNextEntry()) {
-                ZipEntry copyEntry = new ZipEntry(entry.getName());
-                copyEntry.setComment(entry.getComment());
-                java.util.Optional.ofNullable(entry.getCreationTime()).ifPresent(copyEntry::setCreationTime);
-                copyEntry.setExtra(entry.getExtra());
-                java.util.Optional.ofNullable(entry.getLastAccessTime()).ifPresent(copyEntry::setLastAccessTime);
-                java.util.Optional.ofNullable(entry.getTime()).ifPresent(copyEntry::setTime);
-                zipOutputStream.putNextEntry(copyEntry);
+                zipOutputStream.putNextEntry(GradleUtilities.copyEntry(entry));
 
                 if (!entry.getName().endsWith(".class")) {
                     byte[] buffer = new byte[4096];
@@ -462,13 +458,14 @@ public abstract class GenerateSourcesTask extends ConventionTask {
     public abstract RegularFileProperty getInputJar();
 
     @Nested
-    protected abstract ListProperty<MIOMappingsProvider> getJavadocSources();
+    public abstract ListProperty<MIOMappingsProvider> getJavadocSources();
 
     @Inject
     protected abstract ProjectLayout getLayout();
 
     @Optional
     @InputFiles
+    @Classpath
     public abstract Property<FileCollection> getLibraryClasspath();
 
     @OutputFile
