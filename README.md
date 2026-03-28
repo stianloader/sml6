@@ -107,16 +107,29 @@ will be resolved eventually, but requires patches to sl-deobf.
 The FetchGameTask task defines following properties:
 - `aggressiveCaching`: `Property<Boolean>`, whether to cache aggressively. This may easily result in outdated jars for games that update frequently, at the benefit of much better performance.
 - `outputJar`: `RegularFileProperty`, the resolved game jar will be stored at the location provided by this property.
-- `primaryGameJar`: `RegularFileProperty`, this is the primary location to look for the jar. If the jar does not exist at that location, only then it will try to find it through common steam installation directories. This property should be set to allow people to work with older versions of a game.
-- `steamApplicationId` (**unused**): `Property<Integer>`, the appId of the game to fetch. Currently unsused, but might reserved for future use.
-- `steamApplicationName`: `Property<String>`, the name of the steam application, or rather the name of the directory your game is located in relation to the "common" directory.
-- `steamJarPath`: `Property<String>`, the path of game jar in relation to the game's directory on steam.
+- `primaryGameJar`: `RegularFileProperty`, this is the primary location to look for the jar. If the jar does not exist at that location, only then it will try to find it through common steam installation directories. This property should be set to allow people to work with older versions of a game, as well as for CI/CD purposes.
+- `steamApplicationId` (**mandatory**): `Property<Integer>`, the appId of the game to fetch. This is the primary method of obtaining the application installation directory. The installation directory will be resolved through Steam's application manifests.
+- `steamApplicationName` (**mandatory**): `Property<String>`, the name of the steam application, or rather the name of the directory your game is located in relation to the "common" directory. This method of retrieving the installation dir is a fallback in case the appid approach does not work. Though quite frankly it is unlikely to work well. Also, keep in mind that external library folders will not get queried.
+- `steamJarPath` (**mandatory**): `Property<String>`, the path of game jar in relation to the game's installation directory on steam.
 
-The default values of this task are for galimulator. For other games, readjust the properties to follow your game.
+SML6 expects games to be bundled as a single jar in the style of packr and roast.
+However, many games are likely to be bundled across multiple jars. In that case, just create a
+merge request to SML6 to implement the desired functionality. I unfortunately lack the resources to do the job
+for you (after all, I won't be modding the same game as you).
 
-SML6 expects games to be bundled as a single jar. However, many games are likely to be bundled across multiple jars.
-In that case, just create a merge request to SML6 to implement the desired functionality. I unfortunately
-lack the resources to do the job for you (after all, I won't be modding the same game as you).
+This task is most well tested on linux, though different distros and methods of installing steam (e.g. through flatpak, ew)
+may induce issues. Windows should theoretically work, but the used code is very old by now and hasn't been tested in years.
+However, on MacOS this task will outright fail to function properly, though the `primaryGameJar` property can be useful to
+work around this issue without compromising the experience for other users.
+
+Example task configuration:
+```groovy
+task fetchGalim(type: org.stianloader.sml6.tasks.FetchGameTask) {
+    steamApplicationName = "Galimulator"
+    steamApplicationId = 808100
+    steamJarPath = "jar/galimulator-desktop.jar"
+}
+```
 
 ### GenerateSourcesTask
 

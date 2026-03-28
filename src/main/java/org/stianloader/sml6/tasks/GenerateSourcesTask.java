@@ -33,6 +33,7 @@ import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
+import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
@@ -79,6 +80,7 @@ import org.stianloader.sml6.tasks.config.MIOMappingsProvider;
 import net.fabricmc.fernflower.api.IFabricJavadocProvider;
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
 
+@CacheableTask
 public abstract class GenerateSourcesTask extends ConventionTask {
 
     public static abstract class VFDecompileOptions implements PropertyMixIn, PropertyAccess {
@@ -120,7 +122,7 @@ public abstract class GenerateSourcesTask extends ConventionTask {
 
                 try {
                     IFernflowerPreferences.Type type = field.getAnnotation(IFernflowerPreferences.Type.class);
-                    Map.Entry<String, DecompilerOption.Type> entry = Map.entry((String) field.get(null), type == null ? DecompilerOption.Type.BOOLEAN : type.value());
+                    Map.Entry<String, DecompilerOption.Type> entry = Map.entry(Objects.requireNonNull((String) field.get(null)), type == null ? DecompilerOption.Type.BOOLEAN : Objects.requireNonNull(type.value()));
                     canonicalPropertyNames.put(field.getName().replaceAll("_", "").toLowerCase(Locale.ROOT), entry);
                 } catch (IllegalArgumentException | IllegalAccessException e) {
                     throw new IllegalStateException("Unexpected reflective error", e);

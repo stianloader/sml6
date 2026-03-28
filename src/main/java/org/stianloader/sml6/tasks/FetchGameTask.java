@@ -3,10 +3,16 @@ package org.stianloader.sml6.tasks;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import javax.inject.Inject;
 
@@ -27,6 +33,7 @@ import org.gradle.work.DisableCachingByDefault;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.stianloader.sml6.SML6GradlePlugin;
+import org.stianloader.sml6.VDFReader;
 
 @DisableCachingByDefault(because = "Already caches internally")
 public abstract class FetchGameTask extends ConventionTask {
@@ -81,15 +88,12 @@ public abstract class FetchGameTask extends ConventionTask {
     public FetchGameTask() {
         this.setGroup(SML6GradlePlugin.DEFAULT_TASK_GROUP);
         this.setDescription("Fetch the game jar from Steam or another source.");
-        this.getSteamApplicationName().convention("Galimulator");
-        this.getSteamApplicationId().convention(808100);
-        this.getSteamJarPath().convention("jar/galimulator-desktop.jar");
         this.getAggressiveCaching().convention(true);
 
         DirectoryProperty buildDir = this.getLayout().getBuildDirectory();
         Provider<String> taskNameProvider = this.getProviders().provider(this::getName);
         this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6/" + s)));
-        this.getOutputJar().convention(this.getOutputDirectory().file("galimulator-clean.jar"));
+        this.getOutputJar().convention(this.getOutputDirectory().file("game-vanilla.jar"));
     }
 
     @TaskAction
@@ -134,7 +138,8 @@ public abstract class FetchGameTask extends ConventionTask {
             if (applicationName == null) {
                 throw new AssertionError("steamApplicationName is null for task " + this.getPath());
             }
-            File gameDir = this.getGameDir(applicationName);
+
+            File gameDir = this.getGameDir(this.getSteamApplicationId().getOrElse(-1), applicationName);
 
             if (gameDir != null && gameDir.exists()) {
                 String steamJarPath = this.getSteamJarPath().get();
@@ -164,20 +169,117 @@ public abstract class FetchGameTask extends ConventionTask {
     public abstract Property<Boolean> getAggressiveCaching();
 
     @Nullable
-    protected File getGameDir(@NotNull String game) {
+    protected File getGameDir(int steamAppId, @NotNull String game) {
         File steamExec = this.getSteamExecutableDir();
+
         if (steamExec == null || !steamExec.exists()) {
             if (FetchGameTask.OPERATING_SYSTEM.toLowerCase(Locale.ROOT).startsWith("win")) {
                 steamExec = FetchGameTask.getOneOfExistingFiles("C:\\Steam\\", "C:\\Program Files (x86)\\Steam\\", "C:\\Program Files\\Steam\\", "D:\\Steam\\", "C:\\Programmes\\Steam\\", "D:\\Programmes\\Steam\\", "D:\\SteamLibrary\\", "E:\\SteamLibrary\\", "F:\\SteamLibrary\\", "C:\\SteamLibrary\\");
             }
+
             if (steamExec == null) {
                 return null;
             }
         }
+
         if (!steamExec.isDirectory()) {
             throw new IllegalStateException("Steam executable directory not a directory.");
         }
+
         File appdata = new File(steamExec, "steamapps");
+
+        readLibraryFolders:
+        if (appdata.isDirectory()) {
+            File libraryFoldersVDF = new File(appdata, "libraryfolders.vdf");
+
+            if (!libraryFoldersVDF.exists()) {
+                this.getLogger().warn("Library descriptor file '{}' does not exist!", libraryFoldersVDF);
+                break readLibraryFolders;
+            }
+
+            Map<@NotNull String, @NotNull Object> libraries;
+
+            try (Reader reader = Files.newBufferedReader(libraryFoldersVDF.toPath(), StandardCharsets.UTF_8)) {
+                Map.Entry<@NotNull String, @NotNull Map<@NotNull String, @NotNull Object>> rootEntry = VDFReader.readVDF(reader);
+
+                if (!rootEntry.getKey().equals("libraryfolders")) {
+                    throw new IOException("Root entry key is '" + rootEntry.getKey() + "', expected 'libraryfolders'");
+                }
+
+                libraries = rootEntry.getValue();
+            } catch (IOException e) {
+                this.getLogger().warn("Cannot read library descriptor file '{}'.", libraryFoldersVDF, e);
+                break readLibraryFolders;
+            }
+
+            List<@NotNull String> libraryPaths = new ArrayList<>();
+
+            for (Object library : libraries.values()) {
+                if (!(library instanceof Map)) {
+                    this.getLogger().warn("Malformed library descriptor file '{}': Library is not a map.", libraryFoldersVDF);
+                    continue;
+                }
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> coercedLibrary = (Map<String, Object>) library;
+
+                Object path = coercedLibrary.getOrDefault("path", null);
+
+                if (path == null) {
+                    this.getLogger().warn("Malformed library descriptor file '{}': Library without path.", libraryFoldersVDF);
+                    continue;
+                } else if (!(path instanceof String)) {
+                    this.getLogger().warn("Malformed library descriptor file '{}': Library path not a string.", libraryFoldersVDF);
+                    continue;
+                }
+
+                libraryPaths.add((String) path);
+            }
+
+            for (String libraryPath : libraryPaths) {
+                Path rootDir = Paths.get(libraryPath);
+
+                if (Files.notExists(rootDir)) {
+                    this.getLogger().warn("Steam library at '{}' does not exist! Did a volume get unmounted?", rootDir);
+                    continue;
+                }
+
+                Path manifest = rootDir.resolve("steamapps/appmanifest_" + steamAppId + ".acf");
+
+                if (Files.notExists(manifest)) {
+                    this.getLogger().debug("Missing manifest '{}' in library. Skipping library.", manifest);
+                    continue;
+                }
+
+                Map<@NotNull String, @NotNull Object> appState;
+
+                try (Reader reader = Files.newBufferedReader(manifest, StandardCharsets.UTF_8)) {
+                    Map.Entry<@NotNull String, @NotNull Map<@NotNull String, @NotNull Object>> rootEntry = VDFReader.readVDF(reader);
+
+                    if (!rootEntry.getKey().equals("AppState")) {
+                        throw new IOException("Root entry key is '" + rootEntry.getKey() + "', expected 'AppState'");
+                    }
+
+                    appState = rootEntry.getValue();
+                } catch (IOException e) {
+                    this.getLogger().warn("Cannot read application manifest file '{}'.", manifest, e);
+                    continue;
+                }
+
+                String installDir = (String) appState.get("installdir");
+                Path installPath = manifest.resolveSibling("common").resolve(installDir);
+
+                if (Files.notExists(installPath)) {
+                    this.getLogger().warn("Application manifest file '{}' declares absent installation directory '{}'.", manifest, installPath);
+                    continue;
+                }
+
+                this.getLogger().debug("Game installation path '{}' resolved through manifest '{}'", installPath, manifest);
+
+                return installPath.toFile();
+            }
+        }
+
         File common = new File(appdata, "common");
         return new File(common, game);
     }
@@ -199,12 +301,9 @@ public abstract class FetchGameTask extends ConventionTask {
     protected abstract ProviderFactory getProviders();
 
     @Input
-    @Optional
-    @Deprecated // Not yet used
     public abstract Property<Integer> getSteamApplicationId();
 
     @Input
-    @Optional
     public abstract Property<String> getSteamApplicationName();
 
     @Nullable
@@ -247,6 +346,5 @@ public abstract class FetchGameTask extends ConventionTask {
     }
 
     @Input
-    @Optional
     public abstract Property<String> getSteamJarPath();
 }
