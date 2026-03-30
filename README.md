@@ -18,8 +18,10 @@ SML6 provides the following tasks:
 - `org.stianloader.sml6.tasks.AggregateMappingsTask`
 - `org.stianloader.sml6.tasks.DeobfuscateGameTask`
 - `org.stianloader.sml6.tasks.FetchGameTask`
+- `org.stianloader.sml6.tasks.GenerateEclipseRunTask`
 - `org.stianloader.sml6.tasks.GenerateSourcesTask`
 - `org.stianloader.sml6.tasks.RemapJarTask`
+- `org.stianloader.sml6.tasks.SLLJavaExecTask`
 - `org.stianloader.sml6.tasks.StripDependenciesTask`
 - `org.stianloader.sml6.tasks.XZTarBallerTask`
 - `org.stianloader.sml6.tasks.XZCompressTask`
@@ -131,6 +133,32 @@ task fetchGalim(type: org.stianloader.sml6.tasks.FetchGameTask) {
 }
 ```
 
+### GenerateEclipseRunTask
+
+The GenerateEclipseRunTask task defines following properties:
+- `args` (**mandatory**): `ListProperty<CommandLineArgumentProvider>`, the command-line arguments passed to the main class
+- `javaVersion` (**mandatory**): `Property<JavaVersion>`, the version of Java to use at runtime.
+- `jvmArgs` (**mandatory**): `ListProperty<String>`, the JVM arguments to use (includes system properties).
+- `mainClass` (**mandatory**): `Propert<String>`, the main class of the run.
+- `moduleName`: `Property<String>`, value of the `org.eclipse.jdt.launching.MODULE_NAME` attribute. Probably best to leave it alone as this task doesn't handle JPMS well.
+- `outputFile` (**mandatory**): `RegularFileProperty`, the destination file to write the launch config into.
+- `projectName`: `Property<String>`, value of the `org.eclipse.jdt.launching.PROJECT_ATTR` attribute, also used for project-specific classpath entries. Automatically retrieved from the `EclipseModel`, or set to the project's name if the eclipse plugin is not present.
+- `workingDir` (**mandatory**): `DirectoryProperty`, the working directory for the launch runtime. This property affects `workingDirPath`.
+- `workingDirPath`: `Property<String>`, the working directory for the launch runtime. This property is automatically resolved through `workingDir`. This property is only required to prevent gradle from considering the task not up-to-date when contents within the working dir change, even though it's irrelevant for this task.
+
+The `GenerateEclipseRunTask` generates an eclipse JDT-compatible `*.launch` file from any given `JavaExec` task.
+However, the task can also be configured like any other other task if so desired, without having to use a `JavaExec` task as a base.
+
+This task provides the `from(JavaExec)` and `from(Provider<JavaExec>)` methods to configure this task faster.
+It will copy over all relevant properties. It even automatically sets the `outputFile` property to a sensible value!
+
+Example task configuration:
+```groovy
+task genEclipseRuns(type: org.stianloader.sml6.tasks.GenerateEclipseRunTask) {
+    from tasks.named('runMods') // this is preferred over `from tasks['runMods']` or `from runMods` because this uses configure on demand.
+}
+```
+
 ### GenerateSourcesTask
 
 The GenerateSourcesTask task defines following properties:
@@ -165,8 +193,10 @@ Example configuration:
 ```groovy
 task genSources(type: org.stianloader.sml6.tasks.GenerateSourcesTask, dependsOn: stripGalim) {
     inputJar = stripGalim.outputJar
-    dependsOn tarballXZ
-    transitiveDependencies = stripGalim.configuration
+    libraryClasspath = stripGalim.strippingDependencies
+
+    outputSourcesJar = outputDirectory.file("galimulator-" + deobfGalim.autodeobfVersion.get() + "-sources.jar")
+    lineRemappedOutputJar = outputDirectory.file("galimulator-" + deobfGalim.autodeobfVersion.get() + ".jar")
 
     decompileOptions {
         removeSynthetic = false
@@ -223,20 +253,48 @@ task remapGalim(type: org.stianloader.sml6.tasks.RemapJarTask, dependsOn: stripG
 }
 ```
 
+### SLLJavaExecTask
+
+**WARNING:** This task is what one can describe as experimental. It doesn't seem to work well at this point and frankly more research is required.
+
+The SLLJavaExecTask task extends `JavaExec`, inheriting all relevant properties and methods.
+
+Additionally, it defines the following properties:
+- `bootFiles`: `Property<FileCollection>`, list of all boot URLs. This is used for SLL to correctly handle the transforming classloader. Computed as the union of the `bootGameDependencies` and `bootGameJar` properties. Do not change directly unless necessary.
+- `bootGameDependencies` (**mandatory**): `Property<FileCollection>`, dependency artifacts of `bootGameJar`. Tip: This can also be a `Configuration` (which is a `FileCollection`).
+- `bootGameJar`: `RegularFileProperty`, the game jar that is the main focus of SLL's transforming classloader.
+- `modArtifacts`: `ListProperty<PublishArtifact>`, a list of `PublishArtifacts` that defines the mod locations to load ontop the mods in the mod directory.
+- `modComponents`: `ListProperty<SoftwareComponent>`, a list of all `SoftwareComponent`s whoose publications should be added to the `modArtifacts` collection.
+- `mods`: `Property<FileCollection>`, all the present mods. Derived from `modArtifacts`.
+
+Example task configuration:
+
+```groovy
+task runMods(type: org.stianloader.sml6.tasks.SLLJavaExecTask) {
+    classpath configurations['sllLauncher']
+
+    bootGameDependencies = stripGalim.strippingDependencies
+    bootGameJar = genSources.lineRemappedOutputJar
+
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+```
+
 ### StripDependenciesTask
 
 The DeobfuscateGameTask task defines following properties:
-- `configuration`: `Property<Configuration>`, stores the configuration used for dependency resolution (note: consumed indirectly through `strippingDependenciesFiles` for fingerprinting reasons)
 - `filteringEntryNames`: `ListProperty<String>`, stores a list of entry names that are stripped from the output jar. Wildcards, regex, and similar are not supported. Intended to be used to remove singular resources you don't know the dependency of (or are otherwise undesireable).
 - `inputJar` (**mandatory**): `RegularFileProperty`, the fat input jar
 - `outputDirectory`: `DirectoryProperty`, output files will be stored there by default
 - `outputJar`: `RegularFileProperty`, the stripped down jar will be stored there
-- `strippingDependenciesFiles`: `Property<FileCollection>`, defines a list of jars whoose contents should be removed from the input jar. By default, this will be the resolved `configuration` of this task.
+- `strippingDependencies` (**mandatory**): `Property<FileCollection>`, defines a list of jars whoose contents should be removed from the input jar. Calling any of the `stripGalimulatorDefaults502` methods will set this value.
 
-To declare dependencies which should get stripped from the input jar,
-use the `strip` method. While of course you can still declare dependencies manually
-by going through the `configuration` property, this would be an unnecssarily
-convoluted approach.
+This type provides following methods to more easily configure the task:
+- `stripGalimulatorDefaults502()`: Strip galimulator dependencies using the builtin dependency list for Galimulator 5.0.2
+- `stripGalimulatorDefaults502(Action<Configuration>)`: Same as above method, but the generated dependency configuration can be configured through a closure.
+- `stripGalimulatorDefaults502(String, Action<Configuration>)`: Same as above method, but use a custom name for the generated configuration.
 
 Example configuration of this task:
 
@@ -244,18 +302,9 @@ Example configuration of this task:
 task stripGalim(type: org.stianloader.sml6.tasks.StripDependenciesTask, dependsOn: deobfGalim) {
     inputJar = deobfGalim.outputJar
 
-    strip "com.badlogicgames.gdx:gdx-backend-lwjgl:1.9.11"
-    strip "com.badlogicgames.gdx:gdx-platform:1.9.11:natives-desktop"
-    strip "com.badlogicgames.gdx:gdx-tools:1.9.11"
-    strip "com.badlogicgames.gdxpay:gdx-pay-client:1.3.0"
-    strip "com.code-disaster.steamworks4j:steamworks4j-server:1.8.0"
-    strip "com.thoughtworks.xstream:xstream:1.4.7"
-    strip "xpp3:xpp3:1.1.4c"
-    strip 'junit:junit:4.13.2'
-
-    // Or use
-    // stripGalimulatorDefaults502()
-    // to use sensible defaults when working with Galimulator 5.0.2 (input jar still needs to be defined through)
+    stripGalimulatorDefaults502 {
+        configurations['compileOnlyApi'].extendsFrom(it)
+    }
 }
 ```
 
@@ -381,13 +430,42 @@ Fully qualified name: `org.stianloader.sml6.tasks.config.MIOMappingsConfiguratio
 This class extends `MIOMappingsProvider`, inheriting its properties.
 
 The `MIOMappingsFileProvider` class defines following properties:
-- `mappingSource`: `Property<FileCollection>`, the location of the mappings file(s) to use (each file will be treated as it's own unit and summed up). This property is inferred through the `configuration` property.
-- `configuration` (**mandatory**): `Property<Configuration>`, the configuration used to infer the `mappingSource` property.
+- `mappingSource` (**mandatory**): `Property<FileCollection>`, the location of the mappings file(s) to use (each file will be treated as it's own unit and summed up).
 - `containerFormat` (**mandatory**): `Property<org.stianloader.sml6.starplane.remapping.MIOContainerFormat.MappingContainer>`, the container format (either `PLAIN`, `TAR_XZ`, or `XZ`)
 
 Keep in mind that `MappingContainer` constants are easily exposed through `PropertyMixIn`, see the documentation for `MIOMappingsProvider`.
 
-Instances of this class need to be created through gradle's object factory. Passing a `Project` instance as an argument.
+Instances of this class need to be created through gradle's object factory, passing a `Project` instance as an argument.
+
+This class also works for any other kind of `FileCollection`, though it is primarily intended to be used for
+`Configuration`s. Also: `Configuration` extends `FileCollection`, so you can just use it as-is.
+For example, using a configuration for mappings in the `RemapJarTask`:
+
+```groovy
+configurations {
+    mappings
+}
+
+task remapGalim(type: org.stianloader.sml6.tasks.RemapJarTask) {
+    inputJar = stripGalim.outputJar
+    libraryJars = stripGalim.strippingDependencies
+
+    archiveBaseName = "galimulator"
+    archiveClassifier = "remapped"
+    archiveVersion = deobfGalim.autodeobfVersion
+    destinationDirectory = layout.buildDirectory.dir("sml6/remapGalim")
+
+    addMappingsConfiguration {
+        containerFormat = XZ
+        mappingFormat = tinyV2
+        mappingSource = configurations['mappings']
+    }
+}
+
+dependencies {
+    mappings "de.geolykt:bstarmap:0.0.1-a20260327@tinyv2.xz"
+}
+```
 
 ### MIOMappingsDirectoryProvider
 

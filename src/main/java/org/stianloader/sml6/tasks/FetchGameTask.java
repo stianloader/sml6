@@ -23,19 +23,21 @@ import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
+import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
-import org.gradle.work.DisableCachingByDefault;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.stianloader.sml6.SML6GradlePlugin;
 import org.stianloader.sml6.VDFReader;
 
-@DisableCachingByDefault(because = "Already caches internally")
+@CacheableTask
 public abstract class FetchGameTask extends ConventionTask {
     private static final String OPERATING_SYSTEM = System.getProperty("os.name");
     private static final String STEAM_WINDOWS_REGISTRY_INSTALL_DIR_KEY = "InstallPath";
@@ -295,6 +297,7 @@ public abstract class FetchGameTask extends ConventionTask {
 
     @InputFile
     @Optional
+    @PathSensitive(PathSensitivity.ABSOLUTE)
     public abstract RegularFileProperty getPrimaryGameJar();
 
     @Inject

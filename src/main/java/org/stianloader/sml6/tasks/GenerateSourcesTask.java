@@ -22,7 +22,6 @@ import java.util.zip.ZipOutputStream;
 import javax.inject.Inject;
 
 import org.gradle.api.Action;
-import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.ProjectLayout;
@@ -368,10 +367,6 @@ public abstract class GenerateSourcesTask extends ConventionTask {
         this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6/" + s)));
         this.getOutputSourcesJar().convention(this.getOutputDirectory().file("decompiled-sources.jar"));
         this.getLineRemappedOutputJar().convention(this.getOutputDirectory().file("line-remapped.jar"));
-
-        this.getLibraryClasspath().convention(this.getTransitiveDependencies().map(config -> {
-            return this.getProject().files(config.resolve());
-        }));
     }
 
     public void addJavadocSourcesConfiguration(@NotNull Action<@NotNull MIOMappingsConfigurationProvider> configurationClosure) {
@@ -497,7 +492,4 @@ public abstract class GenerateSourcesTask extends ConventionTask {
 
     @Inject
     protected abstract ProviderFactory getProviders();
-
-    @Internal("Source of #getVFLibraryClasspath, not used directly as it is not fingerprintable.")
-    public abstract Property<Configuration> getTransitiveDependencies();
 }

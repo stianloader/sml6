@@ -6,12 +6,10 @@ import java.io.IOException;
 import javax.inject.Inject;
 
 import org.gradle.api.Project;
-import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
-import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.jetbrains.annotations.NotNull;
@@ -20,15 +18,6 @@ import org.stianloader.sml6.starplane.remapping.MIOContainerFormat.MappingContai
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
 
 public abstract class MIOMappingsConfigurationProvider extends MIOMappingsProvider {
-    public MIOMappingsConfigurationProvider() {
-        this.getMappingSource().convention(this.getConfiguration().map((config) -> {
-            return this.getProject().files(config.resolve());
-        }));
-    }
-
-    @Internal
-    public abstract Property<Configuration> getConfiguration();
-
     @Input
     public abstract Property<MappingContainer> getContainerFormat();
 

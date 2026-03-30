@@ -7,10 +7,10 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -21,7 +21,8 @@ import javax.inject.Inject;
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectProvider;
 import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.ConfigurationContainer;
+import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.ProjectLayout;
@@ -32,6 +33,7 @@ import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.tasks.CacheableTask;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
@@ -44,8 +46,6 @@ import org.gradle.api.tasks.TaskAction;
 import org.jetbrains.annotations.NotNull;
 import org.stianloader.sml6.SML6GradlePlugin;
 
-import groovy.lang.Closure;
-
 @CacheableTask
 public abstract class StripDependenciesTask extends ConventionTask {
 
@@ -57,19 +57,13 @@ public abstract class StripDependenciesTask extends ConventionTask {
         Provider<String> taskNameProvider = this.getProviders().provider(this::getName);
         this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6/" + s)));
         this.getOutputJar().convention(this.getOutputDirectory().file("game-reduced.jar"));
-
-        NamedDomainObjectProvider<Configuration> defaultConfigProvider = this.getProject().getConfigurations().register("sml6-" + this.getName());
-        defaultConfigProvider.configure((x) -> {
-            x.setDescription("Default confguration used for task '" + StripDependenciesTask.this.getName() + "'");
-        });
-        this.getConfiguration().convention(defaultConfigProvider);
-        this.getStrippingDependenciesFiles().convention(this.getConfiguration().map(config -> {
-            return this.getProject().files(config.resolve());
-        }));
     }
 
-    @Internal("Source of #getStrippingDependenciesFiles, not used directly as it is not fingerprintable.")
-    public abstract Property<Configuration> getConfiguration();
+    @Inject
+    protected abstract ConfigurationContainer getConfigurations();
+
+    @Inject
+    protected abstract DependencyHandler getDependencies();
 
     @Input
     @Optional
@@ -93,61 +87,55 @@ public abstract class StripDependenciesTask extends ConventionTask {
     protected abstract ProviderFactory getProviders();
 
     @InputFiles
-    @PathSensitive(PathSensitivity.ABSOLUTE)
-    public abstract Property<FileCollection> getStrippingDependenciesFiles();
+    @Classpath
+    public abstract Property<FileCollection> getStrippingDependencies();
 
-    public Dependency strip(@NotNull Object notation) {
-        Objects.requireNonNull(notation, "'notation' may not be null");
-
-        this.getConfiguration().disallowChanges();
-        Dependency dep = this.getProject().getDependencies().create(notation);
-        this.getConfiguration().get().getDependencies().add(dep);
-
-        return dep;
-    }
-
-    public Dependency strip(@NotNull Object notation, Action<Dependency> closure) {
-        Objects.requireNonNull(notation, "'notation' may not be null");
-
-        this.getConfiguration().disallowChanges();
-        Dependency dep = this.getProject().getDependencies().create(notation);
-        closure.execute(dep);
-        this.getConfiguration().get().getDependencies().add(dep);
-
-        return dep;
-    }
-
-    public Dependency strip(@NotNull Object notation, Closure<?> closure) {
-        Objects.requireNonNull(notation, "'notation' may not be null");
-
-        this.getConfiguration().disallowChanges();
-        Dependency dep = this.getProject().getDependencies().create(notation, closure);
-        this.getConfiguration().get().getDependencies().add(dep);
-
-        return dep;
+    public void stripGalimulatorDefaults502() {
+        this.stripGalimulatorDefaults502((t) -> {});
     }
 
     /**
      * Strip the default dependencies for Galimulator 5.0.2
      */
-    public void stripGalimulatorDefaults502() {
-        this.strip("com.badlogicgames.gdx:gdx-backend-lwjgl:1.9.11");
-        this.strip("com.badlogicgames.gdx:gdx-platform:1.9.11:natives-desktop");
-        this.strip("com.badlogicgames.gdx:gdx-tools:1.9.11");
-        this.strip("com.badlogicgames.gdxpay:gdx-pay-client:1.3.0");
-        this.strip("com.code-disaster.steamworks4j:steamworks4j-server:1.8.0");
-        this.strip("com.thoughtworks.xstream:xstream:1.4.7");
-        this.strip("xpp3:xpp3:1.1.4c");
-        this.strip("junit:junit:4.13.2");
+    public void stripGalimulatorDefaults502(Action<Configuration> configureClosure) {
+        this.stripGalimulatorDefaults502("sml6-" + this.getName(), configureClosure);
+    }
 
-        // The exclusions are technically not necessary, but we exclude them in order to avoid duplicate entries on the classpath
-        // This is mostly only useful for other tasks using the configuration as a transient input.
-        this.getConfiguration().get().exclude(Map.of("group", "xmlpull", "module", "xmlpull"));
-        this.getConfiguration().get().exclude(Map.of("group", "xpp3", "module", "xpp3_min"));
+    /**
+     * Strip the default dependencies for Galimulator 5.0.2
+     */
+    public void stripGalimulatorDefaults502(@NotNull String configurationName, Action<Configuration> configureClosure) {
+        NamedDomainObjectProvider<Configuration> configuration = this.getConfigurations().register(configurationName, (config) -> {
+
+            config.setDescription("Default dependencies for Galimulator 5.0.2 for task '" + this.getName() + "'.");
+
+            config.getDependencies().addAll(
+                Arrays.asList(
+                    this.getDependencies().create("com.badlogicgames.gdx:gdx-backend-lwjgl:1.9.11"),
+                    this.getDependencies().create("com.badlogicgames.gdx:gdx-platform:1.9.11:natives-desktop"),
+                    this.getDependencies().create("com.badlogicgames.gdx:gdx-tools:1.9.11"),
+                    this.getDependencies().create("com.badlogicgames.gdxpay:gdx-pay-client:1.3.0"),
+                    this.getDependencies().create("com.code-disaster.steamworks4j:steamworks4j-server:1.8.0"),
+                    this.getDependencies().create("com.thoughtworks.xstream:xstream:1.4.7"),
+                    this.getDependencies().create("xpp3:xpp3:1.1.4c"),
+                    this.getDependencies().create("junit:junit:4.13.2")
+                )
+            );
+
+            // The exclusions are technically not necessary, but we exclude them in order to avoid duplicate entries on the classpath
+            // This is mostly only useful for other tasks using the configuration as a transient input.
+            config.exclude(Map.of("group", "xmlpull", "module", "xmlpull"));
+            config.exclude(Map.of("group", "xpp3", "module", "xpp3_min"));
+        });
+
+        configuration.configure(configureClosure);
+
         this.getFilteringEntryNames().add("XPP3_1.1.4c_MIN_VERSION");
 
         // simplevoronoi seems to be source-shaded into Galimulator, and there is no maven artifact out there for it.
         // hence we will treat that dependency like any other
+
+        this.getStrippingDependencies().set(configuration);
     }
 
     @TaskAction
@@ -156,7 +144,7 @@ public abstract class StripDependenciesTask extends ConventionTask {
 
         boolean failing = false;
 
-        for (File file : this.getStrippingDependenciesFiles().get()) {
+        for (File file : this.getStrippingDependencies().get()) {
             try (InputStream in = Files.newInputStream(file.toPath());
                     ZipInputStream zipIn = new ZipInputStream(in, StandardCharsets.UTF_8)) {
                 for (ZipEntry entry = zipIn.getNextEntry(); entry != null; entry = zipIn.getNextEntry()) {
