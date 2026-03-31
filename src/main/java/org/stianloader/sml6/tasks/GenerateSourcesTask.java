@@ -133,6 +133,11 @@ public abstract class GenerateSourcesTask extends ConventionTask {
             return canonicalPropertyNames;
         }
 
+        @Internal("Already governed by #getVfOptions")
+        public boolean getKotlin() {
+            return !this.vfOptions.getOrDefault("kt-enable", "1").equals("0");
+        }
+
         @Override
         @Internal("Does not affect task")
         public Map<String, ? extends @org.jspecify.annotations.Nullable Object> getProperties() {
@@ -175,10 +180,21 @@ public abstract class GenerateSourcesTask extends ConventionTask {
             return this.getCanonicalPropertyNames().containsKey(name.toLowerCase(Locale.ROOT));
         }
 
+        public void setKotlin(boolean enabled) {
+            this.vfOptions.put("kt-enable", enabled ? "1" : "0");
+        }
+
         @NotNull
-        @Contract(pure = false, mutates = "this", value = "_ -> this")
+        @Contract(pure = false, mutates = "this", value = "_, _ -> this")
         public VFDecompileOptions setOption(@NotNull String key, boolean value) {
             this.vfOptions.put(key, value ? "1" : "0");
+            return this;
+        }
+
+        @NotNull
+        @Contract(pure = false, mutates = "this", value = "_, _ -> this")
+        public VFDecompileOptions setOption(@NotNull String key, @NotNull String value) {
+            this.vfOptions.put(key, value);
             return this;
         }
 
@@ -249,7 +265,7 @@ public abstract class GenerateSourcesTask extends ConventionTask {
         }
     }
 
-    private static void replaceLineNumbers(@NotNull Path unmappedInput, @NotNull Path linemappedOutput, Map<String, int[]> lineMappings) throws IOException {
+    private static void replaceLineNumbers(@NotNull Path unmappedInput, @NotNull Path linemappedOutput, Map<String, int[]> lineMappings, boolean noKotlinPlugin) throws IOException {
         Map<String, ClassNode> nameToNode = new LinkedHashMap<>();
 
         try (ZipInputStream zipIn = new ZipInputStream(Files.newInputStream(unmappedInput), StandardCharsets.UTF_8)) {
@@ -357,6 +373,10 @@ public abstract class GenerateSourcesTask extends ConventionTask {
 
                     @Override
                     public void visitSource(String source, String debug) {
+                        if (noKotlinPlugin && node.sourceFile.endsWith(".kt")) {
+                            node.sourceFile = node.sourceFile.substring(0, node.sourceFile.length() - 2) + "java";
+                        }
+
                         super.visitSource(node.sourceFile, debug);
                     }
                 }, 0);
@@ -458,7 +478,7 @@ public abstract class GenerateSourcesTask extends ConventionTask {
             }
         } else {
             try {
-                GenerateSourcesTask.replaceLineNumbers(this.getInputJar().get().getAsFile().toPath(), this.getLineRemappedOutputJar().get().getAsFile().toPath(), lineMappings);
+                GenerateSourcesTask.replaceLineNumbers(this.getInputJar().get().getAsFile().toPath(), this.getLineRemappedOutputJar().get().getAsFile().toPath(), lineMappings, !this.getDecompileOptions().getKotlin());
             } catch (IOException e) {
                 throw new UncheckedIOException("Unable to remap lines to match sources jar", e);
             }

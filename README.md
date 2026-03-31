@@ -217,6 +217,18 @@ Most of the properties in the `VFDecompileOptions` class are automatically gener
 The automatically generated property names are case-insensitive versions of the constant names within
 https://github.com/Vineflower/vineflower/blob/35f2c6e2b65746d8fc4358ced8de03d440f2b80b/src/org/jetbrains/java/decompiler/main/extern/IFernflowerPreferences.java
 
+The `VFDecompileOptions` class also defines the `getKotlin` and `setKotlin(boolean)` method to enable the vineflower kotlin plugin,
+see https://vineflower.org/usage/#plugin-kotlin - keep in mind that plugin arguments need to be set through `setOption(String, boolean)`
+or `setOption(String, String)`. The only exception is the `--kt-enable` option which can be enabled/disabled using `setKotlin(boolean)`
+(or, in groovy code using `kotlin = false`). The kotlin plugin is enabled by default, or rather SML6 inherits the default properties
+for most arguments except for those related to line remapping infrastructure.
+
+When decompiling classes that have the `.kt` file extension as per the debug source attribute whilst the kotlin plugin is disabled,
+the `GenerateSourcesTask` will automatically change the file extension to `.java` inline to the actual vineflower output.
+Keep in mind that it doesn't do that if line remapping isn't being performed however there is no rational reason to disable
+line remapping anyways - at least not when working with an IDE and in that case you'll probably want to have the correct file extension.
+For cases where line remapping isn't desired, the file extension probably doesn't matter.
+
 ### RemapJarTask
 
 The RemapJarTask task defines following properties:
