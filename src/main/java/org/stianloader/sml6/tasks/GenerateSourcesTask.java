@@ -279,17 +279,30 @@ public abstract class GenerateSourcesTask extends ConventionTask {
                 ClassReader reader = new ClassReader(zipIn);
 
                 ClassNode node = nameToNode.get(reader.getClassName());
-                ClassNode outermostClassnode = node;
+                @NotNull
+                ClassNode outermostClassnode = Objects.requireNonNull(node, "Node not found: " + reader.getClassName());
                 outermostNodeFinderLoop:
                 while (true) {
                     if (outermostClassnode.outerClass != null) {
-                        outermostClassnode = nameToNode.get(outermostClassnode.outerClass);
-                        continue;
+                        ClassNode v = nameToNode.get(outermostClassnode.outerClass);
+                        if (v != null) {
+                            outermostClassnode = v;
+                            continue;
+                        } else {
+                            System.err.println("imn name " + reader.getClassName() + " ---- inner: " + outermostClassnode.name + " ---- outer " + outermostClassnode.outerClass);
+                            break;
+                        }
                     }
                     for (InnerClassNode icn : outermostClassnode.innerClasses) {
                         if (icn.name.equals(outermostClassnode.name) && icn.outerName != null) {
-                            outermostClassnode = nameToNode.get(icn.outerName);
-                            continue outermostNodeFinderLoop;
+                            ClassNode v = nameToNode.get(icn.outerName);
+                            if (v != null) {
+                                outermostClassnode = v;
+                                continue outermostNodeFinderLoop;
+                            } else {
+                                System.err.println("icn name " + icn.name + " ---- inner: " + icn.innerName + " ---- outer " + icn.outerName);
+                                break outermostNodeFinderLoop;
+                            }
                         }
                     }
                     break;

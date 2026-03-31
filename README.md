@@ -263,9 +263,11 @@ Additionally, it defines the following properties:
 - `bootFiles`: `Property<FileCollection>`, list of all boot URLs. This is used for SLL to correctly handle the transforming classloader. Computed as the union of the `bootGameDependencies` and `bootGameJar` properties. Do not change directly unless necessary.
 - `bootGameDependencies` (**mandatory**): `Property<FileCollection>`, dependency artifacts of `bootGameJar`. Tip: This can also be a `Configuration` (which is a `FileCollection`).
 - `bootGameJar`: `RegularFileProperty`, the game jar that is the main focus of SLL's transforming classloader.
-- `modArtifacts`: `ListProperty<PublishArtifact>`, a list of `PublishArtifacts` that defines the mod locations to load ontop the mods in the mod directory.
-- `modComponents`: `ListProperty<SoftwareComponent>`, a list of all `SoftwareComponent`s whoose publications should be added to the `modArtifacts` collection.
-- `mods`: `Property<FileCollection>`, all the present mods. Derived from `modArtifacts`.
+- `mods`: `ListProperty<FileCollection>`, all the present mods. A single `FileCollection` describes the classpath of a single mod 'unit', including resources.
+
+The simply the mod registration process, the `SLLJavaExecTask` provides the following methods:
+- `void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet)`: Register a mod using the outputs of the `AbstractCompile` task and the resources defined by the given `SourceSet`.
+- `void usingModTasks(Provider<AbstractCompile> classesOutput, Provider<ProcessResources> resourcesDir)`: Register a mod using the outputs of the `AbstractCompile` task for classes and the outputs of the `ProcessResources` task for resources.
 
 Example task configuration:
 
@@ -273,8 +275,12 @@ Example task configuration:
 task runMods(type: org.stianloader.sml6.tasks.SLLJavaExecTask) {
     classpath configurations['sllLauncher']
 
-    bootGameDependencies = stripGalim.strippingDependencies
+    bootGameDependencies = stripGame.strippingDependencies
     bootGameJar = genSources.lineRemappedOutputJar
+
+    usingModSourceSet(tasks.named('compileJava'), java.sourceSets.named('main'))
+
+    systemProperties.put("de.geolykt.starloader.launcher.CLILauncher.mainClass", "be.julien.particulitis.lwjgl3.Lwjgl3Launcher")
 
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(17)
