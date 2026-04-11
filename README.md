@@ -12,6 +12,9 @@ initially set on the lengthy process of generating mapping files.
 SML6 uses gslStarplane's Autodeobf configuration, meaning that it
 is also creating spStarmap-compatible mapping files.
 
+All example code snippets in this document use groovy, unless otherwise
+specified.
+
 ## Tasks
 
 SML6 provides the following tasks:
@@ -38,6 +41,18 @@ of individual tasks.
 SML6 also provides the following internal tasks; they are not meant for
 direct use by API users:
 - `org.stianloader.sml6.tasks.AbstractArtifactTask`
+
+## Artifact transforms
+
+SML 6 provides the following artifact transforms:
+- `org.stianloader.sml6.transforms.ApplyRASArtifactTransform`
+
+All artifact transforms provided by SML6 are cacheable.
+
+Like the tasks in SML6, the artifact transformations are not configured by default,
+meaning that they have to be explicitly registered. Further, some parameters need
+to be set for them to work. However, some parameters will use sane defaults
+that should work across the board.
 
 ## Task configuration
 
@@ -509,3 +524,55 @@ The `MIOMappingsFileProvider` class defines following properties:
 Keep in mind that `MappingContainer` constants are easily exposed through `PropertyMixIn`, see the documentation for `MIOMappingsProvider`.
 
 Instances of this class need to be created through gradle's object factory.
+
+## Configuring artifact transforms
+
+### ApplyRASArtifactTransform
+
+Fully qualified name: `org.stianloader.sml6.transforms.ApplyRASArtifactTransform`
+
+This `TransformAction` can be parametrized with the following properties:
+- `fastTransform`: `Property<Boolean>`, if enabled, skip the `ClassNode` stage and write back the bytecode as-is when the class is believed to not be a target. Default value is `false`.
+- `inputFile` (**mandatory**): `RegularFileProperty`, the location of your reversible access setter file that should be applied on the artifact set.
+- `namespace`: `Property<String>`, the name of the ras location for debugging and error reporting purposes. The default value is derived from the `inputFile` property.
+- `outputArtifactType`: `Property<String>`, the suffix that should be attached to the classifier if applicable. The default value of this property is derived from `scope`.
+- `reversed`: `Property<Boolean>`, whether to inverse/undo the RAS application. Default value is `false`.
+- `scope` (**mandatory**): `Property<de.geolykt.starloader.ras.ReversibleAccessSetterContext.RASTransformScope>`, the scope of the artifact transformation. Either `BUILDTIME` or `RUNTIME`. Depending on the scope certain transformations will not be applied. See RAS's documentation for more information on this behaviour.
+
+For convinience purposes, this transform's parameter class supplies the following constants to more easily configure the task:
+- `BUILDTIME`, a `de.geolykt.starloader.ras.ReversibleAccessSetterContext.RASTransformScope`
+- `RUNTIME`, a `de.geolykt.starloader.ras.ReversibleAccessSetterContext.RASTransformScope`
+
+The `ApplyRASArtifactTransform` transformation applies a reversible-access-setter transformation on the configuration.
+The reversible-access-setter (RAS) standard is stianloader's equivalent of AccessWideners or AccessTransformers. However, unlike those
+two formats, RAS is, as it's name implies, reversible. This matters especially for hacks concerning removing ACC_ENUM from enum classes.
+Those hacks work at compile-time but don't at runtime. However, your IDE will use compile-time classes to run the application with.
+This leads towards potential classloading issues unless the classloader is properly vetted and there is proper interplay between IDE,
+buildscript and classloading infrastructure.
+
+RAS also has the advantage of being able to manipulate all kinds of flags that AT/AW can't or have difficult to modify.
+Yet, there are instances where you have to access a synthetic member, override an enum class, or do other things that might at first sound
+completely absurd. Yet, modding a video game at times require such brute methods to bend the ecosystem to your will.
+
+Example transformation configuration (including registering the transform):
+```groovy
+dependencies {
+    registerTransform(org.stianloader.sml6.transforms.ApplyRASArtifactTransform) {
+        from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "jar")
+        to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "ras-compile-jar")
+
+        parameters {
+            scope = BUILDTIME
+            inputFile = project.file("compile-hacks.ras")
+        }
+    }
+}
+
+configurations.testCompileClasspath.attributes {
+    attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "ras-compile-jar")
+}
+
+configurations.compileClasspath.attributes {
+    attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "ras-compile-jar")
+}
+```

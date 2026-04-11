@@ -82,6 +82,7 @@ publishing {
             artifact sourcesJar
         }
     }
+
     repositories {
         if (System.getProperty('publishRepo') != null) {
             maven {
