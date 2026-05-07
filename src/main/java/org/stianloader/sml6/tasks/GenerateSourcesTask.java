@@ -265,7 +265,7 @@ public abstract class GenerateSourcesTask extends ConventionTask {
         }
     }
 
-    private static void replaceLineNumbers(@NotNull Path unmappedInput, @NotNull Path linemappedOutput, Map<String, int[]> lineMappings, boolean noKotlinPlugin) throws IOException {
+    private static void replaceLineNumbers(@NotNull Path unmappedInput, @NotNull Path linemappedOutput, Map<String, int[]> lineMappings, boolean noKotlinPlugin, boolean clearSMAPs) throws IOException {
         Map<String, ClassNode> nameToNode = new LinkedHashMap<>();
 
         try (ZipInputStream zipIn = new ZipInputStream(Files.newInputStream(unmappedInput), StandardCharsets.UTF_8)) {
@@ -377,6 +377,10 @@ public abstract class GenerateSourcesTask extends ConventionTask {
                             source = source.substring(0, source.length() - 2) + "java";
                         }
 
+                        if (clearSMAPs) {
+                            debug = null;
+                        }
+
                         super.visitSource(source, debug);
                     }
                 }, 0);
@@ -400,6 +404,7 @@ public abstract class GenerateSourcesTask extends ConventionTask {
         this.getOutputDirectory().convention(buildDir.dir(taskNameProvider.map(s -> "sml6/" + s)));
         this.getOutputSourcesJar().convention(this.getOutputDirectory().file("decompiled-sources.jar"));
         this.getLineRemappedOutputJar().convention(this.getOutputDirectory().file("line-remapped.jar"));
+        this.getStripSourceDebug().convention(true);
     }
 
     public void addJavadocSourcesConfiguration(@NotNull Action<@NotNull MIOMappingsConfigurationProvider> configurationClosure) {
@@ -478,7 +483,7 @@ public abstract class GenerateSourcesTask extends ConventionTask {
             }
         } else {
             try {
-                GenerateSourcesTask.replaceLineNumbers(this.getInputJar().get().getAsFile().toPath(), this.getLineRemappedOutputJar().get().getAsFile().toPath(), lineMappings, !this.getDecompileOptions().getKotlin());
+                GenerateSourcesTask.replaceLineNumbers(this.getInputJar().get().getAsFile().toPath(), this.getLineRemappedOutputJar().get().getAsFile().toPath(), lineMappings, !this.getDecompileOptions().getKotlin(), this.getStripSourceDebug().get());
             } catch (IOException e) {
                 throw new UncheckedIOException("Unable to remap lines to match sources jar", e);
             }
@@ -525,4 +530,8 @@ public abstract class GenerateSourcesTask extends ConventionTask {
 
     @Inject
     protected abstract ProviderFactory getProviders();
+
+    @Input
+    @Optional
+    public abstract Property<Boolean> getStripSourceDebug();
 }

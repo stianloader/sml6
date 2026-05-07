@@ -180,11 +180,11 @@ The GenerateSourcesTask task defines following properties:
 - `decompileOptions`: `VFDecompileOptions`, the options passed to the Vineflower decompiler
 - `inputJar` (**mandatory**): `RegularFileProperty`, the obfuscated input jar
 - `javadocSources`: `ListProperty<MIOMappingsProvider>`, 
-- `libraryClasspath`: `Property<@Nullable FileCollection>`, a file collection that describes the library path forwarded to Vineflower. This file collection should only contain jars, other file types might break. Note: Default value is the resolved contents of the `transitiveDependencies` property.
+- `libraryClasspath`: `Property<@Nullable FileCollection>`, a file collection that describes the library path forwarded to Vineflower. This file collection should only contain jars, other file types might not be supported.
 - `lineRemappedOutputJar`: `RegularFileProperty`, the file in which the line remapped jar should be stored. If VF was configured to remap `LineNumberNode`s, then this output file's line numbers will correspond to the decompiled source code. Otherwise, this is the input jar.
 - `outputDirectory`: `DirectoryProperty`, output files will be stored there by default
 - `outputSourcesJar`: `RegularFileProperty`, the decompiled output jar will be stored at this location.
-- `transitiveDependencies`: `Provider<@Nullable Configuration>`, a resolveable `Configuration` object that is the default source of the `libraryClasspath` property.
+- `stripSourceDebug`: `Property<Boolean>`, whether to clear the SourceDebugExtension field in classes. Most specifically this clears SMAP files that would otherwise become invalid as sml6 does not yet know how to remap them. This mostly affects decompiled kotlin code. By convention, this property is set to `true`.
 
 The GenerateSourcesTask has following subclass which is in turn used to configure the task further:
 - `org.stianloader.sml6.tasks.GenerateSourcesTask.VFDecompileOptions`
