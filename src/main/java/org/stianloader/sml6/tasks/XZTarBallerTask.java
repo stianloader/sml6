@@ -5,7 +5,6 @@ import java.io.FileOutputStream;
 import javax.inject.Inject;
 
 import org.gradle.api.file.ProjectLayout;
-import org.gradle.api.internal.file.archive.TarCopyAction;
 import org.gradle.api.internal.file.copy.CopyAction;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.CacheableTask;
@@ -30,10 +29,17 @@ public abstract class XZTarBallerTask extends Tar {
 
     @Override
     protected CopyAction createCopyAction() {
-        return new TarCopyAction(this.getArchiveFile().get().getAsFile(), (destination) -> {
+        return GradleUtilities.createTarCopyAction(this.getArchiveFile().get().getAsFile(), (destination) -> {
             return new XZOutputStream(new FileOutputStream(destination), new LZMA2Options(this.getCompressionLevel().get()));
-        }, this.isPreserveFileTimestamps());
+        }, this.isPreserveFileTimestamps(), this.getReproducibleFileTimestamp());
     }
+
+    /**
+     * For compatibility with older gradle versions.
+     */
+    @Input
+    @Optional
+    public abstract Property<Long> getReproducibleFileTimestamp();
 
     @Input
     @Optional
