@@ -168,6 +168,7 @@ public class MIOContainerFormat {
     }
 
     @Override
+    @NotNull
     public String toString() {
         return "MIOContainerFormat[core = " + this.coreFormat + ", container = " + this.containerFormat + "]";
     }

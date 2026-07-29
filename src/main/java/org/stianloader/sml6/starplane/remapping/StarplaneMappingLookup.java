@@ -152,6 +152,7 @@ public class StarplaneMappingLookup extends SimpleMappingLookup {
     }
 
     @Override
+    @NotNull
     public String toString() {
         return "SP Mapping Lookup [map=" + this.map.getFileName() + ",reversed=" + this.reverse + "]";
     }

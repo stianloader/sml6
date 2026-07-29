@@ -94,7 +94,15 @@ public abstract class ApplyRASArtifactTransform implements TransformAction<Apply
             throw new IllegalStateException("Unsupported file extension: " + inputJarFile.getFileName().toString());
         }
 
-        String fileName = inputJarFile.getFileName().toString().replace(".jar", "-" + this.getParameters().getOutputArtifactType().get() + ".jar");
+        String type = this.getParameters().getOutputArtifactType().get();
+        String fileName;
+
+        if (type != null && !type.isEmpty()) {
+            fileName = inputJarFile.getFileName().toString().replace(".jar", "-" + type + ".jar");
+        } else {
+            fileName = inputJarFile.getFileName().toString();
+        }
+
         Path outputFile = outputs.file(fileName).toPath();
 
         ReversibleAccessSetterContext rasInfo = new ReversibleAccessSetterContext(this.getParameters().getScope().get(), false);

@@ -2,15 +2,16 @@
 
 While the SLL ecosystem is focused on transforming the game through
 runtime bytecode patches, the SML toolchain is focused on ahead of
-time recompilation of galimulator.
+time recompilation of galimulator. SML6  tries to unify both
+approaches whilst building on SML's historical strong points like
+strong compatibility with caching and task-based execution.
 
-At this point, SML6 is technically game agnostic (provided it has),
-and has little focus on the decompilation and recompilation aspect
-it should have at a later point in time. Instead, the focus is
-initially set on the lengthy process of generating mapping files.
-
-SML6 uses gslStarplane's Autodeobf configuration, meaning that it
-is also creating spStarmap-compatible mapping files.
+However, SML6 is much more game agnostic than its predecessors,
+provided the game is written in Java and is not all too complex to start.
+Further, SML6 incorporates many elements that were until then
+unique to starplane-based toolchains - for example running the game
+straight from the IDE. As such, SML6 becomes sort of a swiss army knife
+of game modding in Java.
 
 All example code snippets in this document use groovy, unless otherwise
 specified.
@@ -44,7 +45,7 @@ direct use by API users:
 
 ## Artifact transforms
 
-SML 6 provides the following artifact transforms:
+SML6 provides the following artifact transforms:
 - `org.stianloader.sml6.transforms.ApplyRASArtifactTransform`
 
 All artifact transforms provided by SML6 are cacheable.
@@ -53,6 +54,16 @@ Like the tasks in SML6, the artifact transformations are not configured by defau
 meaning that they have to be explicitly registered. Further, some parameters need
 to be set for them to work. However, some parameters will use sane defaults
 that should work across the board.
+
+## Attributes
+
+SML6 provides the following attributes:
+- `org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE`: `Attribute<org.stianloader.sml6.transforms.attributes.RASTransform>`
+
+These attributes are primarily for use in handling when artifact transforms are run.
+However, SML6 will not automatically make use of those attributes and it is up to the
+user to use them or not. These attributes can of course be substituted with home-brewed
+attributes.
 
 ## Task configuration
 
@@ -83,12 +94,12 @@ required to convert from formats that might omit certain metadata.
 Example task configuration:
 ```groovy
 task aggregateToTiny(type: org.stianloader.sml6.tasks.AggregateMappingsTask) {
-    from "src/mappings"
-    group = "build"
-    archiveExtension = "tinyv2"
+    from 'src/mappings'
+    group = 'build'
+    archiveExtension = 'tinyv2'
 
-    inputFormat "enigma"
-    outputFormat "tiny v2"
+    inputFormat 'enigma'
+    outputFormat 'tiny v2'
 }
 ```
 
@@ -142,9 +153,9 @@ work around this issue without compromising the experience for other users.
 Example task configuration:
 ```groovy
 task fetchGalim(type: org.stianloader.sml6.tasks.FetchGameTask) {
-    steamApplicationName = "Galimulator"
+    steamApplicationName = 'Galimulator'
     steamApplicationId = 808100
-    steamJarPath = "jar/galimulator-desktop.jar"
+    steamJarPath = 'jar/galimulator-desktop.jar'
 }
 ```
 
@@ -210,13 +221,13 @@ task genSources(type: org.stianloader.sml6.tasks.GenerateSourcesTask, dependsOn:
     inputJar = stripGalim.outputJar
     libraryClasspath = stripGalim.strippingDependencies
 
-    outputSourcesJar = outputDirectory.file("galimulator-" + deobfGalim.autodeobfVersion.get() + "-sources.jar")
-    lineRemappedOutputJar = outputDirectory.file("galimulator-" + deobfGalim.autodeobfVersion.get() + ".jar")
+    outputSourcesJar = outputDirectory.file('galimulator-' + deobfGalim.autodeobfVersion.get() + '-sources.jar')
+    lineRemappedOutputJar = outputDirectory.file('galimulator-' + deobfGalim.autodeobfVersion.get() + '.jar')
 
     decompileOptions {
         removeSynthetic = false
         verifyAnonymousClasses = true
-        setOption("include-runtime", true)
+        setOption('include-runtime', true)
     }
 
     addJavadocSourcesFile {
@@ -265,12 +276,12 @@ Example task configuration:
 ```groovy
 task remapGalim(type: org.stianloader.sml6.tasks.RemapJarTask, dependsOn: stripGalim) {
     inputJar = stripGalim.outputJar
-    libraryJars = stripGalim.strippingDependenciesFiles
+    libraryJars = stripGalim.strippingDependencies
 
-    archiveBaseName = "galimulator"
-    archiveClassifier = "remapped"
+    archiveBaseName = 'galimulator'
+    archiveClassifier = 'remapped'
     archiveVersion = deobfGalim.autodeobfVersion
-    destinationDirectory = layout.buildDirectory.dir("sml6/remapGalim")
+    destinationDirectory = layout.buildDirectory.dir('sml6/remapGalim')
 
     addMappingsFile {
         containerFormat = TAR_XZ
@@ -307,7 +318,7 @@ task runMods(type: org.stianloader.sml6.tasks.SLLJavaExecTask) {
 
     usingModSourceSet(tasks.named('compileJava'), java.sourceSets.named('main'))
 
-    systemProperties.put("de.geolykt.starloader.launcher.CLILauncher.mainClass", "be.julien.particulitis.lwjgl3.Lwjgl3Launcher")
+    systemProperties.put('de.geolykt.starloader.launcher.CLILauncher.mainClass', 'be.julien.particulitis.lwjgl3.Lwjgl3Launcher')
 
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(17)
@@ -368,9 +379,9 @@ use the XZCompressTask class instead.
 Example task configuration:
 ```groovy
 task tarballXZ(type: org.stianloader.sml6.tasks.XZTarBallerTask) {
-    from "src/mappings"
-    group = "build"
-    archiveExtension = "enigma.tar.xz"
+    from 'src/mappings'
+    group = 'build'
+    archiveExtension = 'enigma.tar.xz'
 }
 
 assemble.dependsOn(tarballXZ)
@@ -411,9 +422,9 @@ You will need to mainly use this for maven publications.
 Example task configuration:
 ```groovy
 task compressXZ(type: org.stianloader.sml6.tasks.XZCompressTask) {
-    from  "tiny-file.tiny"
-    group = "build"
-    archiveExtension = "tiny.xz"
+    from 'tiny-file.tiny'
+    group = 'build'
+    archiveExtension = 'tiny.xz'
 }
 
 assemble.dependsOn(compressXZ)
@@ -483,10 +494,10 @@ task remapGalim(type: org.stianloader.sml6.tasks.RemapJarTask) {
     inputJar = stripGalim.outputJar
     libraryJars = stripGalim.strippingDependencies
 
-    archiveBaseName = "galimulator"
-    archiveClassifier = "remapped"
+    archiveBaseName = 'galimulator'
+    archiveClassifier = 'remapped'
     archiveVersion = deobfGalim.autodeobfVersion
-    destinationDirectory = layout.buildDirectory.dir("sml6/remapGalim")
+    destinationDirectory = layout.buildDirectory.dir('sml6/remapGalim')
 
     addMappingsConfiguration {
         containerFormat = XZ
@@ -496,7 +507,7 @@ task remapGalim(type: org.stianloader.sml6.tasks.RemapJarTask) {
 }
 
 dependencies {
-    mappings "de.geolykt:bstarmap:0.0.1-a20260327@tinyv2.xz"
+    mappings 'de.geolykt:bstarmap:0.0.1-a20260327@tinyv2.xz'
 }
 ```
 
@@ -535,7 +546,7 @@ This `TransformAction` can be parametrized with the following properties:
 - `fastTransform`: `Property<Boolean>`, if enabled, skip the `ClassNode` stage and write back the bytecode as-is when the class is believed to not be a target. Default value is `false`.
 - `inputFile` (**mandatory**): `RegularFileProperty`, the location of your reversible access setter file that should be applied on the artifact set.
 - `namespace`: `Property<String>`, the name of the ras location for debugging and error reporting purposes. The default value is derived from the `inputFile` property.
-- `outputArtifactType`: `Property<String>`, the suffix that should be attached to the classifier if applicable. The default value of this property is derived from `scope`.
+- `outputArtifactType`: `Property<String>`, the suffix that should be attached to the classifier if applicable. If the string is empty, the output file name is equal to the input file name. The default value of this property is derived from `scope`.
 - `reversed`: `Property<Boolean>`, whether to inverse/undo the RAS application. Default value is `false`.
 - `scope` (**mandatory**): `Property<de.geolykt.starloader.ras.ReversibleAccessSetterContext.RASTransformScope>`, the scope of the artifact transformation. Either `BUILDTIME` or `RUNTIME`. Depending on the scope certain transformations will not be applied. See RAS's documentation for more information on this behaviour.
 
@@ -550,16 +561,18 @@ Those hacks work at compile-time but don't at runtime. However, your IDE will us
 This leads towards potential classloading issues unless the classloader is properly vetted and there is proper interplay between IDE,
 buildscript and classloading infrastructure.
 
-RAS also has the advantage of being able to manipulate all kinds of flags that AT/AW can't or have difficult to modify.
+RAS also has the advantage of being able to manipulate all kinds of flags that AT/AW can't or have difficulty modifying.
 Yet, there are instances where you have to access a synthetic member, override an enum class, or do other things that might at first sound
 completely absurd. Yet, modding a video game at times require such brute methods to bend the ecosystem to your will.
 
 Example transformation configuration (including registering the transform):
 ```groovy
+// WARNING: Attribute definitions for demonstration purposes only. Use the `RASTransform` attribute if possible instead.
+
 dependencies {
     registerTransform(org.stianloader.sml6.transforms.ApplyRASArtifactTransform) {
-        from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "jar")
-        to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "ras-compile-jar")
+        from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'jar')
+        to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'ras-compile-jar')
 
         parameters {
             scope = BUILDTIME
@@ -569,10 +582,94 @@ dependencies {
 }
 
 configurations.testCompileClasspath.attributes {
-    attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "ras-compile-jar")
+    attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'ras-compile-jar')
 }
 
 configurations.compileClasspath.attributes {
-    attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "ras-compile-jar")
+    attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'ras-compile-jar')
 }
 ```
+
+Note: The above example transforms all incoming artifacts on a configuration level and the method
+is generally incompatible with other approaches given that it sets the artifact type attribute.
+Instead, consider using the `RASTransform` attribute defined by SML6 (this attribute is documented, too).
+
+## Attribute configuration
+
+### RASTransform
+
+Full qualified path to attribute definition: `org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE`.
+The Attribute is of type: `Attribute<org.stianloader.sml6.transforms.attributes.RASTransform>`.
+The id of the attribute is: `org.stianloader.sml6.ras` 
+
+Standard values defined in `org.stianloader.sml6.transforms.attributes.RASTransform`:
+- `BUILDTIME = TRANSFORMED_BUILDTIME = "transformed-buildtime"`
+- `RUNTIME = TRANSFORMED_RUNTIME = "transformed-runtime"`
+- `NO_TRANSFORM = "no-transform"`
+- `TRANSFORM = "transform"`
+
+To create a `RASTransform` instance, use `objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform')`.
+
+Standard disambiguation rules (**experimental** - behaviour subject to change): `org.stianloader.sml6.transforms.attributes.RASDisambiguationRule`
+Standard compatibility rules (**experimental** - behaviour subject to change): `org.stianloader.sml6.transforms.attributes.RASCompatibilityRule`
+
+This attribute is intended to have finer control over RAS artifact transformations. More specifically, whilst one
+could transform all artifacts, it makes more sense to only transform artifacts that need to be altered.
+
+Example configuration for the attribute (including the `ApplyRASArtifactTransform`):
+```groovy
+dependencies {
+    attributesSchema { // (1)
+        attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE) {
+            disambiguationRules.add(org.stianloader.sml6.transforms.attributes.RASDisambiguationRule)
+            compatibilityRules.add(org.stianloader.sml6.transforms.attributes.RASCompatibilityRule)
+        }
+    }
+
+    artifactTypes { // (2)
+        named(ArtifactTypeDefinition.JAR_TYPE) {
+            attributes.attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE, objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform'))
+        }
+    }
+
+    registerTransform(org.stianloader.sml6.transforms.ApplyRASArtifactTransform) { // (3)
+        from.attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE, objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform'))
+        to.attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE, objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform-buildtime'))
+
+        parameters {
+            scope = BUILDTIME
+            inputFile = project.file('src/main/resources/s2dmenues.ras')
+            outputArtifactType = ''
+        }
+    }
+}
+```
+
+`(1)` defines the RASTransform attribute and registers appropriate disambiguation and compatibility rules.
+
+`(2)` defines that by default all JAR artifacts are transformable by applying the `transform` attribute on all JAR artifacts
+by default.
+
+All artifacts with the `transform` attribute can be transformed into an artifact with the `transform-buildtime` attribute by executing the
+`ApplyRASArtifactTransform` defined through `(3)`.
+
+An artifact can be transformed by setting the requested artifacts attributes accordingly. For example:
+```groovy
+dependencies {
+    compileOnly(':galimulator-remapped:5.0.2') {
+        attributes {
+            attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE, objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform-buildtime'))
+        }
+    }
+}
+```
+
+Note: Artifacts will not get transformed unless requested. Further, source and javadoc jars will not get transformed
+using this trick due to gradle reasons.
+
+Note 2: It is not possible to add an attribute to an artifact without the attribute having been there previously,
+nor is it possible to remove an attribute. This is another gradle issue (see <https://github.com/gradle/gradle/issues/30786>).
+This behaviour might however get changed in the future with future releases of gradle, so make sure to follow that issue.
+
+Note 3: When specifying the attributes of the dependencies, the attribute view of a configuration doesn't necessarily
+need to be touched. Though both approaches can be used together, it generally shows that something is wrong when doing so.
