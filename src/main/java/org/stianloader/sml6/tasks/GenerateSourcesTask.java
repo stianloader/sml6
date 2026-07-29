@@ -373,6 +373,8 @@ public abstract class GenerateSourcesTask extends ConventionTask {
 
                     @Override
                     public void visitSource(String source, String debug) {
+                        source = node.sourceFile;
+
                         if (noKotlinPlugin && source != null && source.endsWith(".kt")) {
                             source = source.substring(0, source.length() - 2) + "java";
                         }
