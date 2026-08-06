@@ -4,8 +4,11 @@ import java.io.File;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 
+import javax.inject.Inject;
+
 import org.gradle.api.file.Directory;
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.file.SourceDirectorySet;
 import org.gradle.api.provider.ListProperty;
@@ -13,11 +16,15 @@ import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Copy;
+import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.JavaExec;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.compile.AbstractCompile;
+import org.gradle.internal.enterprise.test.FileProperty;
 import org.gradle.language.jvm.tasks.ProcessResources;
 import org.gradle.work.DisableCachingByDefault;
 import org.json.JSONArray;
@@ -30,6 +37,7 @@ public abstract class SLLJavaExecTask extends JavaExec {
         this.setDescription("Run the development environment.");
         this.setGroup(SML6GradlePlugin.DEFAULT_TASK_GROUP);
         this.getMainClass().convention("de.geolykt.starloader.launcher.IDELauncher");
+        this.getPropertyExpansionSource().convention(this.getLayout().getProjectDirectory().file("gradle.properties"));
         this.setIgnoreExitValue(true);
         this.systemProperty("de.geolykt.starloader.launcher.IDELauncher.inlineStarplaneAnnotations", true);
 
@@ -49,6 +57,15 @@ public abstract class SLLJavaExecTask extends JavaExec {
             }
 
             return "-Dde.geolykt.starloader.launcher.IDELauncher.bootURLs=" + bootURLs.toString();
+        }));
+
+        this.getJvmArguments().add(this.getPropertyExpansionSource().map((propertySource) -> {
+            return "-Dorg.stianloader.sll.IDELauncher.propertyExpansionSource=" + propertySource.getAsFile().getAbsolutePath();
+        }).orElse("-Dorg.stianloader.sml6.noPropertyExpansionSource"));
+
+        this.getJvmArguments().add(this.getGameMainClass().map(mainClass -> {
+            // Not using #systemProperty here because that doesn't handle properties correctly (ironic, isn't it?).
+            return "-Dde.geolykt.starloader.launcher.CLILauncher.mainClass=" + mainClass;
         }));
 
         this.getJvmArguments().add(this.getMods().map((modUnits) -> {
@@ -81,9 +98,19 @@ public abstract class SLLJavaExecTask extends JavaExec {
     @Internal("Transitively covered by #getBootFiles()")
     public abstract RegularFileProperty getBootGameJar();
 
+    @Input
+    public abstract Property<String> getGameMainClass();
+
+    @Inject
+    protected abstract ProjectLayout getLayout();
+
     @InputFiles
     @Classpath
     public abstract ListProperty<FileCollection> getMods();
+
+    @InputFile
+    @Optional
+    public abstract RegularFileProperty getPropertyExpansionSource();
 
     public void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet) {
         Provider<Directory> classesDir = classesOutput.flatMap(AbstractCompile::getDestinationDirectory);

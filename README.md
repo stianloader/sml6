@@ -302,8 +302,10 @@ Additionally, it defines the following properties:
 - `bootGameDependencies` (**mandatory**): `Property<FileCollection>`, dependency artifacts of `bootGameJar`. Tip: This can also be a `Configuration` (which is a `FileCollection`).
 - `bootGameJar`: `RegularFileProperty`, the game jar that is the main focus of SLL's transforming classloader.
 - `mods`: `ListProperty<FileCollection>`, all the present mods. A single `FileCollection` describes the classpath of a single mod 'unit', including resources.
+- `gameMainClass` (**mandatory**): `Property<String>`, the main class which should be executed with the SLL root classloader after SLL finished initialization. Corresponds to the `de.geolykt.starloader.launcher.CLILauncher.mainClass` system property.
+- `propertyExpansionSource`: `RegularFileProperty`, the path to a .properties file from which property expansions within the extension.json file should occur. Only affects mods declared via the `mods` property (and thus indirectly `usingModSourceSet`/`usingModTasks`). Bound to the `gradle.properties` file by convention.
 
-The simply the mod registration process, the `SLLJavaExecTask` provides the following methods:
+The simplify the mod registration process, the `SLLJavaExecTask` provides the following methods:
 - `void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet)`: Register a mod using the outputs of the `AbstractCompile` task and the resources defined by the given `SourceSet`.
 - `void usingModTasks(Provider<AbstractCompile> classesOutput, Provider<ProcessResources> resourcesDir)`: Register a mod using the outputs of the `AbstractCompile` task for classes and the outputs of the `ProcessResources` task for resources.
 
@@ -315,10 +317,9 @@ task runMods(type: org.stianloader.sml6.tasks.SLLJavaExecTask) {
 
     bootGameDependencies = stripGame.strippingDependencies
     bootGameJar = genSources.lineRemappedOutputJar
+    gameMainClass = 'be.julien.particulitis.lwjgl3.Lwjgl3Launcher' // This is for Particulitix; for Galimulator use 'com.example.Main'
 
     usingModSourceSet(tasks.named('compileJava'), java.sourceSets.named('main'))
-
-    systemProperties.put('de.geolykt.starloader.launcher.CLILauncher.mainClass', 'be.julien.particulitis.lwjgl3.Lwjgl3Launcher')
 
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(17)
