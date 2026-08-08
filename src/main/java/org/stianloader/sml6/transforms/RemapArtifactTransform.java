@@ -1,4 +1,4 @@
-package org.stianloader.sml6.tasks;
+package org.stianloader.sml6.transforms;
 
 import java.io.File;
 import java.io.IOException;
@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -27,26 +28,29 @@ import java.util.zip.ZipOutputStream;
 import javax.inject.Inject;
 
 import org.gradle.api.Action;
-import org.gradle.api.file.FileCollection;
-import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.artifacts.transform.CacheableTransform;
+import org.gradle.api.artifacts.transform.InputArtifact;
+import org.gradle.api.artifacts.transform.TransformAction;
+import org.gradle.api.artifacts.transform.TransformOutputs;
+import org.gradle.api.artifacts.transform.TransformParameters;
+import org.gradle.api.file.ConfigurableFileCollection;
+import org.gradle.api.file.FileSystemLocation;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
-import org.gradle.api.tasks.CacheableTask;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.CompileClasspath;
-import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
-import org.gradle.api.tasks.PathSensitive;
-import org.gradle.api.tasks.PathSensitivity;
-import org.gradle.api.tasks.TaskAction;
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
+import org.slf4j.Logger;
 import org.stianloader.micromixin.remapper.IllegalMixinException;
 import org.stianloader.micromixin.remapper.MicromixinRemapper;
 import org.stianloader.micromixin.remapper.MissingFeatureException;
@@ -62,74 +66,75 @@ import org.stianloader.sml6.starplane.remapping.RASRemapper;
 import org.stianloader.sml6.starplane.remapping.ReadOnlyMIOMappingLookup;
 import org.stianloader.sml6.starplane.remapping.ReadOnlyMappingLookupSink;
 import org.stianloader.sml6.starplane.remapping.StarplaneAnnotationRemapper;
-import org.stianloader.sml6.tasks.config.MIOMappingsConfigurationProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsDirectoryProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsFileProvider;
 import org.stianloader.sml6.tasks.config.MIOMappingsProvider;
 
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
 
-@CacheableTask
-public abstract class RemapJarTask extends AbstractArtifactTask {
+@CacheableTransform
+public abstract class RemapArtifactTransform implements TransformAction<RemapArtifactTransform.RemapArtifactSpec> {
+    public static abstract class RemapArtifactSpec implements TransformParameters {
+        public void addMappingsDirectory(@NotNull Action<@NotNull MIOMappingsDirectoryProvider> configurationClosure) {
+            Provider<MIOMappingsDirectoryProvider> provider = this.getProviders().provider(() -> {
+                MIOMappingsDirectoryProvider fileProvider = this.getObjectFactory().newInstance(MIOMappingsDirectoryProvider.class);
+                configurationClosure.execute(fileProvider);
+                return fileProvider;
+            });
 
-    public RemapJarTask() {
-        this.getLibraryJars().convention(this.getProject().files()); // Empty collection by default
-        this.getArchiveExtension().convention("jar");
+            this.getMappings().add(provider);
+        }
+
+        public void addMappingsFile(@NotNull Action<@NotNull MIOMappingsFileProvider> configurationClosure) {
+            Provider<MIOMappingsFileProvider> provider = this.getProviders().provider(() -> {
+                MIOMappingsFileProvider fileProvider = this.getObjectFactory().newInstance(MIOMappingsFileProvider.class);
+                configurationClosure.execute(fileProvider);
+                return fileProvider;
+            });
+
+            this.getMappings().add(provider);
+        }
+
+        @InputFiles
+        @Optional
+        @CompileClasspath
+        public abstract ConfigurableFileCollection getLibraryJars();
+
+        @Nested
+        public abstract ListProperty<MIOMappingsProvider> getMappings();
+
+        @Inject
+        protected abstract ObjectFactory getObjectFactory();
+
+        @Input
+        @Optional
+        public abstract Property<String> getOutputArtifactType();
+
+        @Inject
+        protected abstract ProviderFactory getProviders();
+
+//        public void addLibraryJar(@NotNull Object library) {
+//            this.getLibraryJars().set(this.getLibraryJars().map(files -> {
+//                return files;
+////                return files.plus(this.getObjectFactory().fileCollection().from(library));
+//            }));
+//        }
     }
 
-    public void addMappingsConfiguration(@NotNull Action<@NotNull MIOMappingsConfigurationProvider> configurationClosure) {
-        Provider<MIOMappingsConfigurationProvider> provider = this.getProviders().provider(() -> {
-            MIOMappingsConfigurationProvider fileProvider = this.getObjectFactory().newInstance(MIOMappingsConfigurationProvider.class);
-            configurationClosure.execute(fileProvider);
-            return fileProvider;
-        });
-
-        this.getMappings().add(provider);
-    }
-
-    public void addMappingsDirectory(@NotNull Action<@NotNull MIOMappingsDirectoryProvider> configurationClosure) {
-        Provider<MIOMappingsDirectoryProvider> provider = this.getProviders().provider(() -> {
-            MIOMappingsDirectoryProvider fileProvider = this.getObjectFactory().newInstance(MIOMappingsDirectoryProvider.class);
-            configurationClosure.execute(fileProvider);
-            return fileProvider;
-        });
-
-        this.getMappings().add(provider);
-    }
-
-    public void addMappingsFile(@NotNull Action<@NotNull MIOMappingsFileProvider> configurationClosure) {
-        Provider<MIOMappingsFileProvider> provider = this.getProviders().provider(() -> {
-            MIOMappingsFileProvider fileProvider = this.getObjectFactory().newInstance(MIOMappingsFileProvider.class);
-            configurationClosure.execute(fileProvider);
-            return fileProvider;
-        });
-
-        this.getMappings().add(provider);
-    }
-
-    @InputFile
-    @PathSensitive(PathSensitivity.RELATIVE)
-    public abstract RegularFileProperty getInputJar();
-
-    @InputFiles
-    @Optional
-    @CompileClasspath
-    public abstract Property<FileCollection> getLibraryJars();
-
-    @Nested
-    public abstract ListProperty<MIOMappingsProvider> getMappings();
+    @InputArtifact
+    @Classpath
+    public abstract Provider<FileSystemLocation> getInputArtifact();
 
     @Inject
-    protected abstract ObjectFactory getObjectFactory();
-
+    public abstract Logger getLogger();
     @Inject
-    protected abstract ProviderFactory getProviders();
+    public abstract ObjectFactory getObjects();
 
-    @TaskAction
-    public void remapJar() {
+    @Override
+    public void transform(TransformOutputs outputs) {
         List<@NotNull ReadOnlyMIOMappingLookup> lookups = new ArrayList<>();
 
-        for (MIOMappingsProvider provider : this.getMappings().get()) {
+        for (MIOMappingsProvider provider : this.getParameters().getMappings().get()) {
             MemoryMappingTree mappingTree;
 
             try {
@@ -144,7 +149,7 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
         NavigableMap<Integer, Map<String, ClassNode>> libraryNodes = new TreeMap<>();
         Map<ClassNode, Map.Entry<File, ZipEntry>> debugInfo = new IdentityHashMap<>(); 
 
-        for (File file : this.getLibraryJars().get()) {
+        for (File file : this.getParameters().getLibraryJars()) {
             try (InputStream rawIn = Files.newInputStream(file.toPath());
                     ZipInputStream zipIn = new ZipInputStream(rawIn, StandardCharsets.UTF_8)) {
                 for (ZipEntry entry = zipIn.getNextEntry(); entry != null; entry = zipIn.getNextEntry()) {
@@ -173,7 +178,7 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                         path = path.substring(18);
                         mrjVersion = Integer.parseInt(path.substring(0, path.indexOf('/')));
                         if (mrjVersion < 9) {
-                            this.getLogger().warn("Task '{}': Resource at path jar://{}!{} would fit under the multi-release jar version of {} - which makes little sense as that would be before the introduction of multi-release jars.", this.getName(), file.toURI(), entry.getName(), mrjVersion);
+                            this.getLogger().warn("Transform '{}': Resource at path jar://{}!{} would fit under the multi-release jar version of {} - which makes little sense as that would be before the introduction of multi-release jars.", this.toString(), file.toURI(), entry.getName(), mrjVersion);
                             mrjVersion = 8;
                         }
                     }
@@ -191,10 +196,10 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                         ClassNode previousValue;
 
                         if ((previousValue = mrjLibNodes.putIfAbsent(visitedNode.name, visitedNode)) != null) {
-                            this.getLogger().warn("Task '{}': Resource at path jar://{}!{} defines class '{}' which was already defined through jar://{}!{}", this.getName(), file.toURI(), entry.getName(), visitedNode.name, debugInfo.get(previousValue).getKey().toURI(), debugInfo.get(previousValue).getValue().getName());
+                            this.getLogger().warn("Task '{}': Resource at path jar://{}!{} defines class '{}' which was already defined through jar://{}!{}", this.toString(), file.toURI(), entry.getName(), visitedNode.name, debugInfo.get(previousValue).getKey().toURI(), debugInfo.get(previousValue).getValue().getName());
                         }
                     } catch (Exception ex) {
-                        this.getLogger().warn("Task '{}': Unable to read library classfile {}; skipping it instead.", this.getName(), entry.getName(), ex);
+                        this.getLogger().warn("Task '{}': Unable to read library classfile {}; skipping it instead.", this.toString(), entry.getName(), ex);
                     }
                 }
             } catch (IOException e) {
@@ -205,8 +210,24 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
         debugInfo = null;
         NavigableMap<Integer, Map<ZipEntry, byte[]>> resources = new TreeMap<>();
 
-        File inputJar = this.getInputJar().get().getAsFile();
-        try (InputStream rawIn = Files.newInputStream(inputJar.toPath());
+        Path inputJarFile = this.getInputArtifact().get().getAsFile().toPath();
+
+        if (!inputJarFile.getFileName().toString().endsWith(".jar")) {
+            throw new IllegalStateException("Unsupported file extension: " + inputJarFile.getFileName().toString());
+        }
+
+        String type = this.getParameters().getOutputArtifactType().getOrNull();
+        String fileName;
+
+        if (type != null && !type.isEmpty()) {
+            fileName = inputJarFile.getFileName().toString().replace(".jar", "-" + type + ".jar");
+        } else {
+            fileName = inputJarFile.getFileName().toString();
+        }
+
+        Path outputFile = outputs.file(fileName).toPath();
+
+        try (InputStream rawIn = Files.newInputStream(inputJarFile);
                 ZipInputStream zipIn = new ZipInputStream(rawIn, StandardCharsets.UTF_8)) {
             for (ZipEntry entry = zipIn.getNextEntry(); entry != null; entry = zipIn.getNextEntry()) {
                 String path = entry.getName();
@@ -233,7 +254,7 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                     mrjVersion = Integer.parseInt(path.substring(0, mrjIdx));
 
                     if (mrjVersion < 9) {
-                        this.getLogger().warn("Task '{}': Resource at path jar://{}!{} would fit under the multi-release jar version of {} - which makes little sense as that would be before the introduction of multi-release jars.", this.getName(), inputJar.toURI(), entry.getName(), mrjVersion);
+                        this.getLogger().warn("Task '{}': Resource at path jar://{}!{} would fit under the multi-release jar version of {} - which makes little sense as that would be before the introduction of multi-release jars.", this.toString(), inputJarFile.toUri(), entry.getName(), mrjVersion);
                         mrjVersion = 8;
                     }
                 }
@@ -243,10 +264,10 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                 }).put(entry, zipIn.readAllBytes());
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Cannot read input file " + inputJar.getAbsolutePath(), e);
+            throw new UncheckedIOException("Cannot read input file " + inputJarFile.toAbsolutePath().toString(), e);
         }
 
-        try (OutputStream os = Files.newOutputStream(this.getArchiveFile().get().getAsFile().toPath());
+        try (OutputStream os = Files.newOutputStream(outputFile);
                 ZipOutputStream zipOut = new ZipOutputStream(os, StandardCharsets.UTF_8)) {
             @SuppressWarnings("null")
             ChainMappingLookup externalLookups = new ChainMappingLookup(lookups.toArray(new @NotNull MappingLookup[0]));
@@ -282,7 +303,7 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                         reader.accept(node, 0);
 
                         if (mainClasses.putIfAbsent(node, resource.getKey()) != null) {
-                            this.getLogger().warn("Task '{}': Collision for node '{}'. Output jar may be corrupted.", this.getName(), node.name);
+                            this.getLogger().warn("Task '{}': Collision for node '{}'. Output jar may be corrupted.", this.toString(), node.name);
                         }
                     } catch (RuntimeException ignored) { }
                 }
@@ -346,10 +367,15 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                 for (Map.Entry<ClassNode, ZipEntry> mainEntry : mainClasses.entrySet()) {
                     ClassNode mainNode = Objects.requireNonNull(mainEntry.getKey());
 
-//                    if (mainNode.name.equals("snoddasmannen/galimulator/class_31")) {
+//                    if (mainNode.name.equals("de/geolykt/starloader/apimixins/TextInputDialogWidgetMixins")) {
 //                        allLookup.enableDebugMode(true);
 //                        externalLookups.enableDebugMode(true);
 //                        libraryMemberLister.setDebugging(true);
+//                        SimpleTopLevelLookup.realmsOf(allClasses).forEach((def, realm) -> {
+//                            System.out.println("Def: " + def + ", realm: " + realm);
+//                        });
+//                        System.err.println("Def: " + allTopLevelLookup.getDefinition(new MemberRef("snoddasmannen/galimulator/ui/pm", "a_", "(I)V")));
+//                        System.err.println("Realm: " + allTopLevelLookup.realmOf(new MemberRef("snoddasmannen/galimulator/ui/pm", "a_", "(I)V")));
 //                    }
 
                     StarplaneAnnotationRemapper.apply(mainNode, coreRemaper, sharedBuilder);
@@ -362,7 +388,7 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
 
                     coreRemaper.remapNode(mainNode, sharedBuilder);
 
-//                    if (mainNode.name.equals("snoddasmannen/galimulator/class_31")) {
+//                    if (mainNode.name.equals("de/geolykt/starloader/apimixins/TextInputDialogWidgetMixins")) {
 //                        allLookup.enableDebugMode(false);
 //                        externalLookups.enableDebugMode(false);
 //                        libraryMemberLister.setDebugging(false);

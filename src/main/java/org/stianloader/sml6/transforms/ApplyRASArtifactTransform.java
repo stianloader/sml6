@@ -94,7 +94,7 @@ public abstract class ApplyRASArtifactTransform implements TransformAction<Apply
             throw new IllegalStateException("Unsupported file extension: " + inputJarFile.getFileName().toString());
         }
 
-        String type = this.getParameters().getOutputArtifactType().get();
+        String type = this.getParameters().getOutputArtifactType().getOrNull();
         String fileName;
 
         if (type != null && !type.isEmpty()) {

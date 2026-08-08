@@ -9,7 +9,7 @@ project.group = 'org.stianloader'
 base {
     archivesName = 'sml6'
 }
-project.version = '0.1.0'
+project.version = '0.2.0'
 
 java.targetCompatibility = compileJava.targetCompatibility = '17'
 java.sourceCompatibility = compileJava.sourceCompatibility = '17'

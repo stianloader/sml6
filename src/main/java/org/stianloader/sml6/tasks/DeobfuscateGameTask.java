@@ -29,6 +29,7 @@ import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
+import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InnerClassNode;
@@ -37,7 +38,11 @@ import org.stianloader.deobf.ClassWrapper;
 import org.stianloader.deobf.IntermediaryGenerator;
 import org.stianloader.deobf.MethodReference;
 import org.stianloader.deobf.Oaktree;
+import org.stianloader.remapper.MemberRef;
 import org.stianloader.remapper.Remapper;
+import org.stianloader.remapper.SimpleHierarchyAwareMappingLookup;
+import org.stianloader.remapper.SimpleTopLevelLookup;
+import org.stianloader.remapper.SimpleTopLevelLookup.MemberRealm;
 import org.stianloader.sml6.SML6GradlePlugin;
 import org.stianloader.sml6.starplane.autodeobf.Autodeobf502;
 import org.stianloader.sml6.starplane.autodeobf.AutodeobfRunner;
@@ -107,17 +112,21 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
             deobfuscator.index(jar);
             jar.close();
             Map<String, ClassNode> nameToNode = new HashMap<>();
+
             for (ClassNode node : deobfuscator.getClassNodesDirectly()) {
                 nameToNode.put(node.name, node);
             }
+
             long startDeobf = System.nanoTime();
             this.getLogger().debug("Loaded input jar in " + (startDeobf - indexing) / 1_000_000L + " ms.");
+
             if (!this.getWithSLDeobf().get()) {
                 if (this.getWithSLDeobfRemapping().get()) {
                     this.getLogger().warn("Task '{}' has 'withSLDeobf' set to false, while 'withSLDeobfRemapping' is true. The latter will be skipped.");
                 }
                 break oaktreeDeobf;
             }
+
             deobfuscator.fixInnerClasses();
             deobfuscator.fixParameterLVT();
             deobfuscator.guessFieldGenerics();
@@ -153,7 +162,12 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
                     generator.doProposeEnumFieldsV2();
                     generator.remapGetters();
 
-                    Remapper remapper = new Remapper(mappingWriter);
+                    // Hierarchy aware lookup is needed to remap inner enums correctly, as we need field hierarchies to be properly propagated for that.
+                    @SuppressWarnings("null")
+                    SimpleTopLevelLookup hierarchyLookup = new SimpleTopLevelLookup((Iterable<ClassNode>) deobfuscator.getClassNodesDirectly());
+                    SimpleHierarchyAwareMappingLookup remapperLookup = new SimpleHierarchyAwareMappingLookup(mappingWriter, hierarchyLookup);
+
+                    Remapper remapper = new Remapper(remapperLookup);
                     StringBuilder sharedBuilder = new StringBuilder();
 
                     for (ClassNode node : deobfuscator.getClassNodesDirectly()) {
@@ -184,12 +198,18 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
                     throw new IllegalStateException("No Autodeobf implementation for version " + autodeobfVersion);
                 }
 
+                // Hierarchy aware lookup is needed to remap inner enums correctly, as we need field hierarchies to be properly propagated for that.
+                @SuppressWarnings("null")
+                SimpleTopLevelLookup hierarchyLookup = new SimpleTopLevelLookup((Iterable<ClassNode>) deobfuscator.getClassNodesDirectly());
+                SimpleHierarchyAwareMappingLookup remapperLookup = new SimpleHierarchyAwareMappingLookup(mappingWriter, hierarchyLookup);
+
                 this.getLogger().info("Task '{}' uses autodeobf version {}", this.getPath(), deobf.getVersion());
 
                 StringBuilder sharedBuilder = new StringBuilder();
                 deobf.runAll();
                 mappingWriter.synchronizeICNNames(Objects.requireNonNull(deobfuscator.getClassNodesDirectly()), new StringBuilder());
-                Remapper remapper = new Remapper(mappingWriter);
+
+                Remapper remapper = new Remapper(remapperLookup);
 
                 for (ClassNode node : deobfuscator.getClassNodesDirectly()) {
                     remapper.remapNode(Objects.requireNonNull(node), sharedBuilder);

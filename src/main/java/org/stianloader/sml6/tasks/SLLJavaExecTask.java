@@ -24,7 +24,6 @@ import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.compile.AbstractCompile;
-import org.gradle.internal.enterprise.test.FileProperty;
 import org.gradle.language.jvm.tasks.ProcessResources;
 import org.gradle.work.DisableCachingByDefault;
 import org.json.JSONArray;

@@ -21,6 +21,7 @@ specified.
 SML6 provides the following tasks:
 - `org.stianloader.sml6.tasks.AggregateMappingsTask`
 - `org.stianloader.sml6.tasks.DeobfuscateGameTask`
+- `org.stianloader.sml6.tasks.DeployModsTask`
 - `org.stianloader.sml6.tasks.FetchGameTask`
 - `org.stianloader.sml6.tasks.GenerateEclipseRunTask`
 - `org.stianloader.sml6.tasks.GenerateSourcesTask`
@@ -47,6 +48,7 @@ direct use by API users:
 
 SML6 provides the following artifact transforms:
 - `org.stianloader.sml6.transforms.ApplyRASArtifactTransform`
+- `org.stianloader.sml6.transforms.RemapArtifactTransform`
 
 All artifact transforms provided by SML6 are cacheable.
 
@@ -129,6 +131,22 @@ Note: Although this goes against common sense, the Switchmap
 classes get remapped via sl-deobf, but no mappings
 file will be generated. So … just don't touch them. This issue
 will be resolved eventually, but requires patches to sl-deobf.
+
+### DeployModsTask
+
+The `DeployModsTask` task defines following properties:
+- `mods` (**mandatory**): `Property<FileCollection>`, the external mods to deploy into the mods directory.
+- `modsDirectory`: `DirectoryProperty`, the path to the mods directory.
+
+`DeployModsTask` deploys the given SLL mods jars into the mods directory. Previously installed versions of
+the mods are removed from the mods directory. Mods that were previously part of the `mods` property, but aren't
+anymore will continue to exist in the mods directory, so please beware of that. Neither will manually installed mods
+be removed, provided they do not have the same name as any mods in the `mods` property.
+
+This task is not intended for deploying mods you have just built, as that is usually unnecessary.
+Further, unlike gsl-starplane's equivalent task, this task does not remap mod artifacts. For that, use a custom
+artifact view and run transformers accordingly, see `RemapArtifactTransform` for more information on that
+and on how to best set up this task.
 
 ### FetchGameTask
 
@@ -512,6 +530,9 @@ dependencies {
 }
 ```
 
+Using a `Configuration` as an input for an artifact transform is not supported by gradle 9.7.0 due to the configuration cache. Use `MIOMappingsFileProvider` instead
+for remote resources, making use of its `downloadResource` helper method.
+
 ### MIOMappingsDirectoryProvider
 
 Fully qualified name: `org.stianloader.sml6.tasks.config.MIOMappingsDirectoryProvider`
@@ -536,6 +557,33 @@ The `MIOMappingsFileProvider` class defines following properties:
 Keep in mind that `MappingContainer` constants are easily exposed through `PropertyMixIn`, see the documentation for `MIOMappingsProvider`.
 
 Instances of this class need to be created through gradle's object factory.
+
+This class provides the `downloadResource(String uri, String sha256, String sha512)` helper method. It replaces the assignment to `mappingsSource` as it already does the assignment internally.
+The requested resource is only downloaded on demand and cached in a project-local directory. The file is downloaded anew on checksum mismatch, if no checksums are given, or if the file name changes.
+If the downloaded file does not match the provided checksums, an exception is thrown when resolving the `mappingsSource` file (i.e. whenever the MIO mappings provider is being used).
+
+Example use of this method:
+
+```groovy
+addMappingsFile {
+    containerFormat = XZ
+    mappingFormat = TINY_2
+    downloadResource("https://stianloader.org/maven/de/geolykt/bstarmap/${bStarmapVersion}/bstarmap-${bStarmapVersion}.tinyv2.xz", "$bStarmapSha256", "$bStarmapSha512")
+}
+```
+
+with
+
+```properties
+bStarmapVersion=0.0.1-a20260327
+bStarmapSha256=5ed621df235f482dd15a391bad8a43be3644660cafe9519f180090d138dc4fe0
+bStarmapSha512=fa897f99286a3edd973e4f23c7360b0dd7cd0c967b2278107120cd1c01e1439b6757ecf9a38e56561cc1f3e4ca5b392106bf3356559fc16ad615966dc8a217ce
+```
+
+being in the `gradle.properties` file.
+
+The intended use of this method is when a remote file is used as an input for an artifact transform, as `Configuration`s cannot be used in gradle 9.7.0 due to the configuration cache. 
+Due to security reasons, `http` is not supported and thus `https` is effectively the only protocol supported (as the method is using Java's `HttpClient` API)
 
 ## Configuring artifact transforms
 
@@ -594,6 +642,73 @@ configurations.compileClasspath.attributes {
 Note: The above example transforms all incoming artifacts on a configuration level and the method
 is generally incompatible with other approaches given that it sets the artifact type attribute.
 Instead, consider using the `RASTransform` attribute defined by SML6 (this attribute is documented, too).
+
+### RemapArtifactTransform
+
+Fully qualified name: `org.stianloader.sml6.transforms.RemapArtifactTransform`
+
+This `TransformAction` can be parametrized with the following properties:
+- `outputArtifactType`: `Property<String>`, the suffix that should be attached to the classifier if applicable. If the string is empty, the output file name is equal to the input file name. The default value of this property is `null`.
+- `mappings`: `ListProperty<MIOMappingsProvider>`, the mappings to use. See `addMappingsFile` for convinience methods to register a mappings file. Note: Using a `Configuration` as an input for an artifact transform is not supported by gradle and thus the relevant convinience methods have been omitted here.
+- `libraryJars`: `ConfigurableFileCollection`, defines a list of jars whoose contents should be used to inferr member realms. Especially required for mixin remapping.
+
+This transform provides the following methods to more easily configure the task:
+- `addMappingsDir(Action<MIOMappingsDirectoryProvider> configurationClosure)`: Register a `MIOMappingsDirectoryProvider` as a mappings source.
+- `addMappingsFile(Action<MIOMappingsFileProvider> configurationClosure)`: Register a `MIOMappingsFileProvider` as a mappings source.
+
+Example configuration of the transform:
+
+```groovy
+// Required for properly generating member realms, as otherwise obfuscation can be an issue
+task stripObfGame(type: org.stianloader.sml6.tasks.StripDependenciesTask) {
+    inputJar = fetchGame.outputJar
+    filteringEntryNames = stripGame.filteringEntryNames
+    strippingDependencies = stripGame.strippingDependencies
+}
+
+task deployMods(type: org.stianloader.sml6.tasks.DeployModsTask) {
+    dependsOn stripObfGame // Required for the artifact transform to not blow up
+
+    // This must be an artifact view as otherwise the GAVCE notation will cause variants to not be selected as we would like.
+    // Related gradle forum post: <https://discuss.gradle.org/t/52166>.
+    mods = configurations.named('dependencyMods').map {
+        it.incoming.artifactView {
+            attributes {
+                attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'predeploy-mod')
+            }
+        }.files
+    }
+}
+
+dependencies {
+    registerTransform(org.stianloader.sml6.transforms.RemapArtifactTransform) {
+        from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'jar')
+        to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'predeploy-mod')
+
+        parameters {
+            libraryJars.from(stripObfGame.outputJar)
+
+            addMappingsFile {
+                containerFormat = PLAIN
+                mappingFormat = TINY
+                mappingSource = deobfGame.slIntermediaryMappings
+            }
+
+            addMappingsFile {
+                containerFormat = PLAIN
+                mappingFormat = TINY
+                mappingSource = deobfGame.spStarmapMappings
+            }
+
+            addMappingsFile {
+                containerFormat = XZ
+                mappingFormat = TINY_2
+                downloadResource("https://stianloader.org/maven/de/geolykt/bstarmap/${bStarmapVersion}/bstarmap-${bStarmapVersion}.tinyv2.xz", "$bStarmapSha256", "$bStarmapSha512")
+            }
+        }
+    }
+}
+```
 
 ## Attribute configuration
 

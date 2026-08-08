@@ -81,6 +81,7 @@ public abstract class StripDependenciesTask extends ConventionTask {
 
     @OutputFile
     @Optional
+    @NotNull
     public abstract RegularFileProperty getOutputJar();
 
     @Inject

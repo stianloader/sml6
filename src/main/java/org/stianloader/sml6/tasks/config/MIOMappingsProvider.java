@@ -13,6 +13,7 @@ import org.gradle.api.tasks.Optional;
 import org.gradle.internal.metaobject.PropertyAccess;
 import org.gradle.internal.metaobject.PropertyMixIn;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import net.fabricmc.mappingio.format.MappingFormat;
 import net.fabricmc.mappingio.tree.MappingTree.ClassMapping;
@@ -54,7 +55,7 @@ public abstract class MIOMappingsProvider implements PropertyMixIn {
 
         Set<String> mioSrcNames = new HashSet<>();
         Set<String> srcNames = new HashSet<>();
-        Map<String, String> dstNames = new HashMap<>();
+        Map<@NotNull String, String> dstNames = new HashMap<>();
 
         for (ClassMapping classMapping : tree.getClasses()) {
             if (classMapping == null) {
@@ -62,13 +63,14 @@ public abstract class MIOMappingsProvider implements PropertyMixIn {
             }
 
             String srcName = srcNamespaceId == MappingTreeView.SRC_NAMESPACE_ID ? classMapping.getSrcName() : classMapping.getDstName(srcNamespaceId);
+            @Nullable
             String dstName = dstNamespaceId == MappingTreeView.SRC_NAMESPACE_ID ? classMapping.getSrcName() : classMapping.getDstName(dstNamespaceId);
 
             if (!mioSrcNames.add(classMapping.getSrcName())) {
                 throw new IOException("Mapping tree contains duplicate MIO source name: " + classMapping.getSrcName());
             } else if (!srcNames.add(srcName)) {
                 throw new IOException("Mapping tree contains duplicate source name: " + srcName);
-            } else if (dstNames.putIfAbsent(dstName, srcName) != null) {
+            } else if (dstName != null && dstNames.putIfAbsent(dstName, srcName) != null) {
                 throw new IOException("Mapping tree contains duplicate destination name: " + dstName + ", already mapped by " + dstNames.get(dstName) + ", also mapped by " + srcName);
             }
         }
