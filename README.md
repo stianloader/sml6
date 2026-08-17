@@ -590,6 +590,20 @@ being in the `gradle.properties` file.
 The intended use of this method is when a remote file is used as an input for an artifact transform, as `Configuration`s cannot be used in gradle 9.7.0 due to the configuration cache. 
 Due to security reasons, `http` is not supported and thus `https` is effectively the only protocol supported (as the method is using Java's `HttpClient` API)
 
+Alternatively, the `downloadMavenResource(String dependencyNotation, String repoId, String repoURI)` helper method can be used. This method has the same use as `downloadResource`,
+except that it will also query the local maven repository. This method uses picoresolve for artifact resolution, bypassing gradle's artifact resolution. The cache directory in which
+artifacts are downloaded to is `~/.m2/repository`. Artifacts don't necessarily need to exist in the given remote repository. This method is most useful when testing mappings for runtime
+collisions.
+
+The `downloadMavenResource` method can be used as follows:
+```groovy
+    addMappingsFile {
+        containerFormat = XZ
+        mappingFormat = TINY_2
+        downloadMavenResource("de.geolykt:bstarmap:${bStarmapVersion}@tinyv2.xz", 'stianloader-nightlies', 'https://stianloader.org/maven/')
+    }
+```
+
 ## Configuring artifact transforms
 
 ### ApplyRASArtifactTransform

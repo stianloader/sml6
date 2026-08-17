@@ -9,9 +9,11 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 
 import javax.inject.Inject;
 
@@ -26,12 +28,16 @@ import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.stianloader.picoresolve.GAV;
+import org.stianloader.picoresolve.MavenResolver;
+import org.stianloader.picoresolve.repo.RepositoryAttachedValue;
+import org.stianloader.picoresolve.repo.URIMavenRepository;
+import org.stianloader.picoresolve.version.MavenVersion;
 import org.stianloader.sml6.starplane.remapping.MIOContainerFormat.MappingContainer;
 
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
 
 public abstract class MIOMappingsFileProvider extends MIOMappingsProvider {
-
     private static boolean checksumMatches(byte @NotNull[] data, @NotNull String digestAlgorithm, @NotNull String digestHex) {
         MessageDigest digest;
 
@@ -57,6 +63,54 @@ public abstract class MIOMappingsFileProvider extends MIOMappingsProvider {
         }
 
         return hex.toString().equalsIgnoreCase(digestHex);
+    }
+
+    public void downloadMavenResource(@NotNull String notation, @NotNull String repoId, @NotNull String repoURI) {
+        // FIXME while this usually works, this is not exactly right. See https://stackoverflow.com/a/47833316
+        Path mavenLocal = Paths.get(System.getProperty("user.home")).resolve(".m2/repository");
+        MavenResolver resolver = new MavenResolver(mavenLocal);
+        resolver.addRepository(new URIMavenRepository(repoId, URI.create(repoURI)));
+
+        @NotNull String[] components = notation.split(":", 3);
+
+        if (components.length < 3) {
+            throw new IllegalArgumentException("Invalid artifact notation: " + notation);
+        }
+
+        String group = components[0];
+        String artifact = components[1];
+        String version = components[2];
+
+        String classifier = null;
+        String extension = "jar";
+
+        int idxAt = version.indexOf('@');
+
+        if (idxAt > 0) {
+            if (idxAt == version.length() - 1) {
+                throw new IllegalArgumentException("Invalid artifact notation (cannot parse extension): " + notation);
+            }
+
+            extension = version.substring(idxAt + 1);
+            version = version.substring(0, idxAt);
+        } else if (idxAt == 0) {
+            throw new IllegalArgumentException("Invalid artifact notation (cannot parse version): " + notation);
+        }
+
+        int idxColon = version.indexOf(':');
+
+        if (idxColon > 0) {
+            if (idxColon != version.length() - 1) {
+                classifier = version.substring(idxColon + 1);
+                version = version.substring(0, idxColon);
+            }
+        } else if (idxColon == 0) {
+            throw new IllegalArgumentException("Invalid artifact notation (no version): " + notation);
+        }
+
+        RepositoryAttachedValue<Path> rav = resolver.download(new GAV(group, artifact, MavenVersion.parse(version)), classifier, extension, Runnable::run).join();
+
+        this.getMappingSource().set(rav.getValue().toFile());
     }
 
     public void downloadResource(@NotNull String resourceURI, @Nullable String sha256Hash, @Nullable String sha512Hash) {
