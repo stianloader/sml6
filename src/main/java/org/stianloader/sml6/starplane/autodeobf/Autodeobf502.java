@@ -718,7 +718,7 @@ public class Autodeobf502 implements StarmappedNames502, AutodeobfRunner {
                                 // Problem is that CFR will now have serious issues with void declarations, but CFR is pretty bad
                                 // with dealing with out remapping shenanigans anyways, so not a big issue.
                                 // Link to related bug: https://github.com/leibnitz27/cfr/issues/150
-                                String lvnDesc = "Ljava/java/ArrayList;";
+                                String lvnDesc = "Ljava/util/ArrayList;";
                                 AbstractInsnNode startLabelInsn = method.instructions.getFirst();
                                 while (!(startLabelInsn instanceof LabelNode)) {
                                     startLabelInsn = startLabelInsn.getNext();
