@@ -132,7 +132,7 @@ public abstract class MIOMappingsFileProvider extends MIOMappingsProvider {
                     throw new IllegalStateException("SHA-512 checksum does not match!");
                 }
 
-                Files.createDirectory(p.getParent());
+                Files.createDirectories(p.getParent());
                 Files.write(p, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
