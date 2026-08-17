@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import javax.inject.Inject;
 import org.gradle.api.JavaVersion;
 import org.gradle.api.file.Directory;
 import org.gradle.api.file.DirectoryProperty;
+import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.internal.ConventionTask;
@@ -25,14 +27,18 @@ import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.tasks.CacheableTask;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.plugins.ide.eclipse.model.EclipseModel;
 import org.gradle.process.CommandLineArgumentProvider;
 import org.jetbrains.annotations.NotNull;
+import org.json.JSONArray;
 
 @CacheableTask
 public abstract class GenerateEclipseRunTask extends ConventionTask {
@@ -71,7 +77,8 @@ public abstract class GenerateEclipseRunTask extends ConventionTask {
 
     public GenerateEclipseRunTask() {
         this.getProjectName().convention(this.getProviders().provider(() -> {
-            EclipseModel eclipseModel = (EclipseModel) this.getProject().getProperties().get("eclipse");
+            EclipseModel eclipseModel = (EclipseModel) this.getProject().findProperty("eclipse");
+
             if (eclipseModel == null) {
                 return this.getProject().getName();
             } else {
@@ -94,11 +101,60 @@ public abstract class GenerateEclipseRunTask extends ConventionTask {
         this.getJvmArgs().set(task.flatMap(JavaExec::getJvmArguments).map((jvmArgs) -> {
             List<String> outArgs = new ArrayList<>(jvmArgs);
 
+            {
+                outArgs.removeIf(s -> s.startsWith("-Dde.geolykt.starloader.launcher.IDELauncher.modURLs="));
+                List<FileCollection> modUnits = this.getMods().get();
+                JSONArray outArray = new JSONArray();
+
+                for (FileCollection modUnit : modUnits) {
+                    JSONArray modURLs = new JSONArray();
+                    outArray.put(modURLs);
+
+                    for (File f : modUnit) {
+                        try {
+                            modURLs.put(f.toURI().toURL().toExternalForm());
+                        } catch (MalformedURLException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    }
+                }
+
+                outArgs.add("-Dde.geolykt.starloader.launcher.IDELauncher.modURLs=" + outArray.toString());
+            }
+
             task.get().getSystemProperties().forEach((key, value) -> {
                 outArgs.add("-D" + key + (value != null ? "=" + value.toString() : ""));
             });
 
             return outArgs;
+        }));
+
+        this.getMods().set(task.flatMap(javaExecTask -> {
+            if (!(javaExecTask instanceof SLLJavaExecTask)) {
+                return this.getProviders().provider(() -> {
+                    throw new IllegalStateException("Used #from(…) with a JavaExec argument that isn't SLLJavaExecTask; GenerateEclipseRunTask#mods must be defiend manually.");
+                });
+            }
+
+            return ((SLLJavaExecTask) javaExecTask).getModSourceSets().map(sourceSets -> {
+                List<FileCollection> modUnits = new ArrayList<>();
+
+                EclipseModel eclipseModel = (EclipseModel) this.getProject().findProperty("eclipse");
+
+                Directory baseSourceOutputDir;
+
+                if (eclipseModel != null) {
+                    baseSourceOutputDir = eclipseModel.getClasspath().getBaseSourceOutputDir().get();
+                } else {
+                    baseSourceOutputDir = this.getLayout().getProjectDirectory().dir("bin");
+                }
+
+                for (SourceSet modSourceSet : sourceSets) {
+                    modUnits.add(baseSourceOutputDir.files(modSourceSet.getName()));
+                }
+
+                return modUnits;
+            });
         }));
 
         this.getMainClass().set(task.flatMap(JavaExec::getMainClass));
@@ -107,9 +163,7 @@ public abstract class GenerateEclipseRunTask extends ConventionTask {
             return this.getProviders().provider(exec::getJavaVersion);
         }));
 
-        this.getWorkingDir().set(this.getLayout().dir(task.flatMap(exec -> {
-            return this.getProviders().provider(exec::getWorkingDir);
-        })));
+        this.getWorkingDir().set(task.flatMap(JavaExec::getWorkingDirectory));
 
         this.getOutputFile().set(this.getLayout().getProjectDirectory().file(task.flatMap(exec -> {
             return this.getProviders().provider(() -> exec.getProject().getName() + "-" + exec.getName().substring(exec.getName().lastIndexOf(':') + 1) + ".launch");
@@ -163,6 +217,10 @@ public abstract class GenerateEclipseRunTask extends ConventionTask {
 
     @Input
     public abstract Property<String> getMainClass();
+
+    @InputFiles
+    @Classpath
+    public abstract ListProperty<FileCollection> getMods();
 
     @Input
     public abstract Property<String> getModuleName();

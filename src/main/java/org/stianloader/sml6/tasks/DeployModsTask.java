@@ -167,10 +167,5 @@ public abstract class DeployModsTask extends ConventionTask {
                 e.printStackTrace();
             }
         }
-
-        this.getLogger().info("Mods: ", this.getMods().get());
-        this.getLogger().info("Or: {}", mods);
-        this.getLogger().info("Named: {}", extensionNames);
-        this.getLogger().info("Executing {}", this.getName());
     }
 }

@@ -184,6 +184,7 @@ The GenerateEclipseRunTask task defines following properties:
 - `javaVersion` (**mandatory**): `Property<JavaVersion>`, the version of Java to use at runtime.
 - `jvmArgs` (**mandatory**): `ListProperty<String>`, the JVM arguments to use (includes system properties).
 - `mainClass` (**mandatory**): `Propert<String>`, the main class of the run.
+- `mods` (**mandatory**): `ListProperty<FileCollection>`, all the present mods. A single `FileCollection` describes the classpath of a single mod 'unit', including resources.
 - `moduleName`: `Property<String>`, value of the `org.eclipse.jdt.launching.MODULE_NAME` attribute. Probably best to leave it alone as this task doesn't handle JPMS well.
 - `outputFile` (**mandatory**): `RegularFileProperty`, the destination file to write the launch config into.
 - `projectName`: `Property<String>`, value of the `org.eclipse.jdt.launching.PROJECT_ATTR` attribute, also used for project-specific classpath entries. Automatically retrieved from the `EclipseModel`, or set to the project's name if the eclipse plugin is not present.
@@ -195,6 +196,10 @@ However, the task can also be configured like any other other task if so desired
 
 This task provides the `from(JavaExec)` and `from(Provider<JavaExec>)` methods to configure this task faster.
 It will copy over all relevant properties. It even automatically sets the `outputFile` property to a sensible value!
+
+The `from` methods will also copy over the `mods` property, albeit indirectory. More specifically, the given JavaExec task must
+be a `SLLJavaExecTask`. Further, the location of the mods will be derived from `SLLJavaExecTask#usingModSourceSet` and it is assumed
+that all those source sets are built by eclipse.
 
 Example task configuration:
 ```groovy

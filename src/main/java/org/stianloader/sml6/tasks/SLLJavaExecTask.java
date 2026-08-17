@@ -111,6 +111,9 @@ public abstract class SLLJavaExecTask extends JavaExec {
     @Optional
     public abstract RegularFileProperty getPropertyExpansionSource();
 
+    @Internal
+    abstract ListProperty<SourceSet> getModSourceSets();
+
     public void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet) {
         Provider<Directory> classesDir = classesOutput.flatMap(AbstractCompile::getDestinationDirectory);
         Provider<FileCollection> resourcesProvider = resourceSet.map(SourceSet::getResources).map(SourceDirectorySet::getSourceDirectories);
@@ -118,6 +121,8 @@ public abstract class SLLJavaExecTask extends JavaExec {
         this.getMods().add(classesDir.zip(resourcesProvider, (classes, resources) -> {
             return this.getObjectFactory().fileCollection().from(classes, resources);
         }));
+
+        this.getModSourceSets().add(resourceSet);
     }
 
     public void usingModTasks(Provider<AbstractCompile> classesOutput, Provider<ProcessResources> resourcesDir) {
