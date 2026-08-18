@@ -28,6 +28,7 @@ public abstract class AbstractArtifactTask extends ConventionTask {
         private final TaskDependency dependencies;
         @NotNull
         private final AbstractArtifactTask task;
+
         @Inject
         public AbstractArtifactTaskPublishArtifact(@NotNull TaskDependencyFactory factory, @NotNull AbstractArtifactTask task) {
             this.dependencies = factory.configurableDependency().add(task);

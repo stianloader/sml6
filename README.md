@@ -722,7 +722,7 @@ dependencies {
             addMappingsFile {
                 containerFormat = XZ
                 mappingFormat = TINY_2
-                downloadResource("https://stianloader.org/maven/de/geolykt/bstarmap/${bStarmapVersion}/bstarmap-${bStarmapVersion}.tinyv2.xz", "$bStarmapSha256", "$bStarmapSha512")
+                downloadMavenResource("de.geolykt:bstarmap:${bStarmapVersion}@tinyv2.xz", 'stianloader-nightlies', 'https://stianloader.org/maven/')
             }
         }
     }

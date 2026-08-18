@@ -1,9 +1,12 @@
 package org.stianloader.sml6.tasks.config;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.gradle.api.provider.Property;
@@ -54,7 +57,7 @@ public abstract class MIOMappingsProvider implements PropertyMixIn {
         int dstNamespaceId = this.getDstNamespaceId().get();
 
         Set<String> mioSrcNames = new HashSet<>();
-        Set<String> srcNames = new HashSet<>();
+        Set<@NotNull String> srcNames = new HashSet<>();
         Map<@NotNull String, String> dstNames = new HashMap<>();
 
         for (ClassMapping classMapping : tree.getClasses()) {
@@ -62,14 +65,35 @@ public abstract class MIOMappingsProvider implements PropertyMixIn {
                 throw new IOException("Mapping tree contains null class mapping");
             }
 
+            @Nullable
             String srcName = srcNamespaceId == MappingTreeView.SRC_NAMESPACE_ID ? classMapping.getSrcName() : classMapping.getDstName(srcNamespaceId);
             @Nullable
             String dstName = dstNamespaceId == MappingTreeView.SRC_NAMESPACE_ID ? classMapping.getSrcName() : classMapping.getDstName(dstNamespaceId);
 
             if (!mioSrcNames.add(classMapping.getSrcName())) {
                 throw new IOException("Mapping tree contains duplicate MIO source name: " + classMapping.getSrcName());
-            } else if (!srcNames.add(srcName)) {
-                throw new IOException("Mapping tree contains duplicate source name: " + srcName);
+            } else if (srcName != null && !srcNames.add(srcName)) {
+                List<String> mioSrcNamesList = new ArrayList<>();
+                List<String> dstNamesList = new ArrayList<>();
+
+                for (ClassMapping cm : tree.getClasses()) {
+                    if (cm == null) {
+                        continue;
+                    }
+
+                    @Nullable
+                    String src = srcNamespaceId == MappingTreeView.SRC_NAMESPACE_ID ? cm.getSrcName() : cm.getDstName(srcNamespaceId);
+
+                    if (Objects.equals(src, srcName)) {
+                        @Nullable
+                        String dst = dstNamespaceId == MappingTreeView.SRC_NAMESPACE_ID ? cm.getSrcName() : cm.getDstName(dstNamespaceId);
+
+                        mioSrcNamesList.add(cm.getSrcName());
+                        dstNamesList.add(dst);
+                    }
+                }
+
+                throw new IOException("Mapping tree contains duplicate source name: " + srcName + "; mioSrcNames: " + mioSrcNamesList + "; dstNames: " + dstNamesList);
             } else if (dstName != null && dstNames.putIfAbsent(dstName, srcName) != null) {
                 throw new IOException("Mapping tree contains duplicate destination name: " + dstName + ", already mapped by " + dstNames.get(dstName) + ", also mapped by " + srcName);
             }

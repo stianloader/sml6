@@ -178,8 +178,14 @@ public abstract class RemapJarTask extends AbstractArtifactTask {
                         }
                     }
 
+                    readClass:
                     try {
                         ClassReader reader = new ClassReader(allData);
+
+                        if (reader.getClassName().equals("module-info")) {
+                            break readClass; // Module-infos have a very high chance of collision but irrelevant during the mapping process.
+                        }
+
                         ClassNode visitedNode = new ClassNode();
                         reader.accept(visitedNode, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG);
 
