@@ -1,5 +1,7 @@
 package org.stianloader.sml6.starplane.remapping;
 
+import java.util.Objects;
+
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.stianloader.deobf.DescString;
@@ -9,11 +11,23 @@ import org.stianloader.remapper.MemberRef;
 
 import net.fabricmc.mappingio.tree.MappingTreeView;
 import net.fabricmc.mappingio.tree.MappingTreeView.ClassMappingView;
+import net.fabricmc.mappingio.tree.MappingTreeView.ElementMappingView;
 import net.fabricmc.mappingio.tree.MappingTreeView.FieldMappingView;
 import net.fabricmc.mappingio.tree.MappingTreeView.MethodArgMappingView;
 import net.fabricmc.mappingio.tree.MappingTreeView.MethodMappingView;
 
 public class ReadOnlyMIOMappingLookup implements MappingLookup, MappingSink, CommentLookup {
+    @NotNull
+    protected static String getName(@NotNull ElementMappingView element, int namespaceId) {
+        String name = element.getName(namespaceId);
+
+        if (name == null) {
+            return Objects.requireNonNull(element.getSrcName());
+        } else {
+            return name;
+        }
+    }
+
     private final int dstNamespace;
     @NotNull
     private final MappingTreeView mappingIOTree;
@@ -36,106 +50,24 @@ public class ReadOnlyMIOMappingLookup implements MappingLookup, MappingSink, Com
     @Override
     @Nullable
     public String getClassComment(@NotNull String className) {
-        ClassMappingView cmv = this.mappingIOTree.getClass(className, this.srcNamespace);
+        ClassMappingView cmv = this.getClassMappingView(className);
+
         return cmv == null ? null : cmv.getComment();
     }
 
-    @Override
     @Nullable
-    public String getFieldComment(@NotNull String srcOwner, @NotNull String srcName,
-            @NotNull String srcDesc) {
-        FieldMappingView fmv = this.mappingIOTree.getField(srcOwner, srcName, srcDesc, this.srcNamespace);
-        return fmv == null ? null : fmv.getComment();
-    }
-
-    @Override
-    @Nullable
-    public String getMethodComment(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc) {
-        MethodMappingView mmv = this.mappingIOTree.getMethod(srcOwner, srcName, srcDesc, this.srcNamespace);
-        return mmv == null ? null : mmv.getComment();
-    }
-
-    @Override
-    @NotNull
-    public String getRemappedClassName(@NotNull String srcName) {
-        String dst = this.getRemappedClassNameFast(srcName);
-        return dst == null ? srcName : dst;
-    }
-
-    @Override
-    @Nullable
-    public String getRemappedClassNameFast(@NotNull String srcName) {
-        ClassMappingView cmv = this.mappingIOTree.getClass(srcName, this.srcNamespace);
-        if (cmv != null) {
-            return cmv.getName(this.dstNamespace);
-        }
-        return null;
-    }
-
-    @Override
-    @NotNull
-    public String getRemappedFieldName(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc) {
-        FieldMappingView fmv = this.mappingIOTree.getField(srcOwner, srcName, srcDesc, this.srcNamespace);
-        if (fmv == null) {
-            return srcName;
-        }
-        String dst = fmv.getName(this.dstNamespace);
-        return dst == null ? srcName : dst;
-    }
-
-    @Override
-    @NotNull
-    public String getRemappedMethodName(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc) {
-        MethodMappingView mmv = this.mappingIOTree.getMethod(srcOwner, srcName, srcDesc, this.srcNamespace);
-        if (mmv == null) {
-            return srcName;
-        }
-        String dst = mmv.getName(this.dstNamespace);
-        return dst == null ? srcName : dst;
-    }
-
-    @Override
-    @Nullable
-    public String getRemappedParameterName(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc, int paramIndex, boolean isStatic) {
-        MethodMappingView mmv = this.mappingIOTree.getMethod(srcOwner, srcName, srcDesc, this.srcNamespace);
-//        System.out.println(srcOwner + "; " + srcName + "; " + srcDesc);
-//        System.out.println("mmv: " + mmv);
-
-        if (mmv == null) {
-            return null;
+    protected ClassMappingView getClassMappingView(@NotNull String name) {
+        if (this.srcNamespace == MappingTreeView.SRC_NAMESPACE_ID) {
+            return this.mappingIOTree.getClass(name);
         }
 
-        int lvIndex = -1;
+        for (ClassMappingView cmv : this.mappingIOTree.getClasses()) {
+            if (cmv == null) {
+                continue;
+            }
 
-        for (MethodArgMappingView arg : mmv.getArgs()) {
-            assert arg != null;
-            
-            int argPos = arg.getArgPosition();
-
-            if (argPos < 0) {
-                if (lvIndex < 0) {
-                    // convert paramIndex to lvIndex
-                    lvIndex = isStatic ? 0 : 1;
-                    int i = paramIndex;
-                    DescString dString = new DescString(srcDesc);
-
-                    while (i-- != 0 && dString.hasNext()) {
-                        String type = dString.nextType();
-
-                        if (type.equals("J") || type.equals("D")) {
-                            lvIndex += 2;
-                        } else {
-                            lvIndex++;
-                        }
-                    }
-                }
-
-                if (lvIndex == arg.getLvIndex()) {
-//                    System.out.println(arg.getArgPosition() + "; " + arg.getComment() + "; " + arg.getLvIndex() + ";" + arg.getName(this.dstNamespace) + ";@" + paramIndex + "/" + lvIndex);
-                    return arg.getName(this.dstNamespace);
-                }
-            } else if (argPos == paramIndex) {
-                return arg.getName(this.dstNamespace);
+            if (ReadOnlyMIOMappingLookup.getName(cmv, this.srcNamespace).equals(name)) {
+                return cmv;
             }
         }
 
@@ -143,29 +75,77 @@ public class ReadOnlyMIOMappingLookup implements MappingLookup, MappingSink, Com
     }
 
     @Override
-    @NotNull
-    public ReadOnlyMIOMappingLookup remapClass(@NotNull String srcName, @NotNull String dstName) {
-        throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
+    @Nullable
+    public String getFieldComment(@NotNull String srcOwner, @NotNull String srcName,
+            @NotNull String srcDesc) {
+        FieldMappingView fmv = this.getFieldMappingView(srcOwner, srcName, srcDesc);
+
+        return fmv == null ? null : fmv.getComment();
+    }
+
+    @Nullable
+    protected FieldMappingView getFieldMappingView(@NotNull String owner, @NotNull String name, @NotNull String descriptor) {
+        if (this.srcNamespace == MappingTreeView.SRC_NAMESPACE_ID) {
+            return this.mappingIOTree.getField(owner, name, descriptor);
+        }
+
+        ClassMappingView cmv = this.getClassMappingView(owner);
+
+        if (cmv == null) {
+            return null;
+        }
+
+        for (FieldMappingView fmv : cmv.getFields()) {
+            if (fmv == null) {
+                continue;
+            }
+
+            if (ReadOnlyMIOMappingLookup.getName(fmv, this.srcNamespace).equals(name)) {
+                return fmv;
+            }
+        }
+
+        return null;
     }
 
     @Override
-    @NotNull
-    public ReadOnlyMIOMappingLookup remapMember(@NotNull MemberRef srcRef, @NotNull String dstName) {
-        throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
+    @Nullable
+    public String getMethodComment(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc) {
+        MethodMappingView mmv = this.getMethodMappingView(srcOwner, srcName, srcDesc);
+
+        return mmv == null ? null : mmv.getComment();
     }
 
-    @Override
-    @NotNull
-    public ReadOnlyMIOMappingLookup remapParameter(@NotNull String srcOwner, @NotNull String srcMethodName, @NotNull String srcDesc,
-            int paramIndex, @NotNull String destParamName) {
-        throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
+    @Nullable
+    protected MethodMappingView getMethodMappingView(@NotNull String owner, @NotNull String name, @NotNull String descriptor) {
+        if (this.srcNamespace == MappingTreeView.SRC_NAMESPACE_ID) {
+            return this.mappingIOTree.getMethod(owner, name, descriptor);
+        }
+
+        ClassMappingView cmv = this.getClassMappingView(owner);
+
+        if (cmv == null) {
+            return null;
+        }
+
+        for (MethodMappingView mmv : cmv.getMethods()) {
+            if (mmv == null) {
+                continue;
+            }
+
+            if (ReadOnlyMIOMappingLookup.getName(mmv, this.srcNamespace).equals(name)) {
+                return mmv;
+            }
+        }
+
+        return null;
     }
 
     @Override
     @Nullable
     public String getParameterComment(@NotNull String srcOwner, @NotNull String srcName,
             @NotNull String srcDesc, int paramIndex, boolean isStatic) {
-        MethodMappingView mmv = this.mappingIOTree.getMethod(srcOwner, srcName, srcDesc, this.srcNamespace);
+        MethodMappingView mmv = this.getMethodMappingView(srcOwner, srcName, srcDesc);
 
         if (mmv == null) {
             return null;
@@ -175,7 +155,7 @@ public class ReadOnlyMIOMappingLookup implements MappingLookup, MappingSink, Com
 
         for (MethodArgMappingView arg : mmv.getArgs()) {
             assert arg != null;
-            
+
             int argPos = arg.getArgPosition();
 
             if (argPos < 0) {
@@ -205,5 +185,117 @@ public class ReadOnlyMIOMappingLookup implements MappingLookup, MappingSink, Com
         }
 
         return null;
+    }
+
+    @Override
+    @NotNull
+    public String getRemappedClassName(@NotNull String srcName) {
+        ClassMappingView cmv = this.getClassMappingView(srcName);
+
+        if (cmv != null) {
+            return ReadOnlyMIOMappingLookup.getName(cmv, this.dstNamespace);
+        }
+
+        return srcName;
+    }
+
+    @Override
+    @Nullable
+    public String getRemappedClassNameFast(@NotNull String srcName) {
+        ClassMappingView cmv = this.getClassMappingView(srcName);
+
+        if (cmv != null) {
+            return ReadOnlyMIOMappingLookup.getName(cmv, this.dstNamespace);
+        }
+
+        return null;
+    }
+
+    @Override
+    @NotNull
+    public String getRemappedFieldName(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc) {
+        FieldMappingView fmv = this.getFieldMappingView(srcOwner, srcName, srcDesc);
+
+        if (fmv == null) {
+            return srcName;
+        }
+
+        return ReadOnlyMIOMappingLookup.getName(fmv, this.dstNamespace);
+    }
+
+    @Override
+    @NotNull
+    public String getRemappedMethodName(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc) {
+        MethodMappingView mmv = this.getMethodMappingView(srcOwner, srcName, srcDesc);
+
+        if (mmv == null) {
+            return srcName;
+        }
+
+        return ReadOnlyMIOMappingLookup.getName(mmv, this.dstNamespace);
+    }
+
+    @Override
+    @Nullable
+    public String getRemappedParameterName(@NotNull String srcOwner, @NotNull String srcName, @NotNull String srcDesc, int paramIndex, boolean isStatic) {
+        MethodMappingView mmv = this.getMethodMappingView(srcOwner, srcName, srcDesc);
+
+        if (mmv == null) {
+            return null;
+        }
+
+        int lvIndex = -1;
+
+        for (MethodArgMappingView arg : mmv.getArgs()) {
+            assert arg != null;
+
+            int argPos = arg.getArgPosition();
+
+            if (argPos < 0) {
+                if (lvIndex < 0) {
+                    // convert paramIndex to lvIndex
+                    lvIndex = isStatic ? 0 : 1;
+                    int i = paramIndex;
+                    DescString dString = new DescString(srcDesc);
+
+                    while (i-- != 0 && dString.hasNext()) {
+                        String type = dString.nextType();
+
+                        if (type.equals("J") || type.equals("D")) {
+                            lvIndex += 2;
+                        } else {
+                            lvIndex++;
+                        }
+                    }
+                }
+
+                if (lvIndex == arg.getLvIndex()) {
+                    return ReadOnlyMIOMappingLookup.getName(arg, this.dstNamespace);
+                }
+            } else if (argPos == paramIndex) {
+                return ReadOnlyMIOMappingLookup.getName(arg, this.dstNamespace);
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    @NotNull
+    public ReadOnlyMIOMappingLookup remapClass(@NotNull String srcName, @NotNull String dstName) {
+        throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
+    }
+
+    @Override
+    @NotNull
+    public ReadOnlyMIOMappingLookup remapMember(@NotNull MemberRef srcRef, @NotNull String dstName) {
+        throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
+    }
+
+    @Override
+    @NotNull
+    public ReadOnlyMIOMappingLookup remapParameter(@NotNull String srcOwner, @NotNull String srcMethodName, @NotNull String srcDesc,
+            int paramIndex, @NotNull String destParamName) {
+        throw new UnsupportedOperationException("Due to the complexities involved in the mapping process, this instance is read-only and only implements MappingSink for technical reasons");
     }
 }
