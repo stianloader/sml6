@@ -33,7 +33,6 @@ import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.OutputFile;
-import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.plugins.ide.eclipse.model.EclipseModel;
 import org.gradle.process.CommandLineArgumentProvider;
@@ -136,25 +135,7 @@ public abstract class GenerateEclipseRunTask extends ConventionTask {
                 });
             }
 
-            return ((SLLJavaExecTask) javaExecTask).getModSourceSets().map(sourceSets -> {
-                List<FileCollection> modUnits = new ArrayList<>();
-
-                EclipseModel eclipseModel = (EclipseModel) this.getProject().findProperty("eclipse");
-
-                Directory baseSourceOutputDir;
-
-                if (eclipseModel != null) {
-                    baseSourceOutputDir = eclipseModel.getClasspath().getBaseSourceOutputDir().get();
-                } else {
-                    baseSourceOutputDir = this.getLayout().getProjectDirectory().dir("bin");
-                }
-
-                for (SourceSet modSourceSet : sourceSets) {
-                    modUnits.add(baseSourceOutputDir.files(modSourceSet.getName()));
-                }
-
-                return modUnits;
-            });
+            return ((SLLJavaExecTask) javaExecTask).getModSourceSets();
         }));
 
         this.getMainClass().set(task.flatMap(JavaExec::getMainClass));

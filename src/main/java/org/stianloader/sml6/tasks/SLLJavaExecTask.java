@@ -3,6 +3,8 @@ package org.stianloader.sml6.tasks;
 import java.io.File;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.inject.Inject;
 
@@ -25,6 +27,7 @@ import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.compile.AbstractCompile;
 import org.gradle.language.jvm.tasks.ProcessResources;
+import org.gradle.plugins.ide.eclipse.model.EclipseModel;
 import org.gradle.work.DisableCachingByDefault;
 import org.json.JSONArray;
 import org.stianloader.sml6.SML6GradlePlugin;
@@ -112,7 +115,7 @@ public abstract class SLLJavaExecTask extends JavaExec {
     public abstract RegularFileProperty getPropertyExpansionSource();
 
     @Internal
-    abstract ListProperty<SourceSet> getModSourceSets();
+    abstract ListProperty<FileCollection> getModSourceSets();
 
     public void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet) {
         Provider<Directory> classesDir = classesOutput.flatMap(AbstractCompile::getDestinationDirectory);
@@ -122,7 +125,19 @@ public abstract class SLLJavaExecTask extends JavaExec {
             return this.getObjectFactory().fileCollection().from(classes, resources);
         }));
 
-        this.getModSourceSets().add(resourceSet);
+        this.getModSourceSets().add(resourceSet.map((modSourceSet) -> {
+            EclipseModel eclipseModel = (EclipseModel) this.getProject().findProperty("eclipse");
+
+            Directory baseSourceOutputDir;
+
+            if (eclipseModel != null) {
+                baseSourceOutputDir = eclipseModel.getClasspath().getBaseSourceOutputDir().get();
+            } else {
+                baseSourceOutputDir = this.getLayout().getProjectDirectory().dir("bin");
+            }
+
+            return baseSourceOutputDir.files(modSourceSet.getName());
+        }));
     }
 
     public void usingModTasks(Provider<AbstractCompile> classesOutput, Provider<ProcessResources> resourcesDir) {
