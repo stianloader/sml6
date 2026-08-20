@@ -67,6 +67,18 @@ However, SML6 will not automatically make use of those attributes and it is up t
 user to use them or not. These attributes can of course be substituted with home-brewed
 attributes.
 
+### Helper classes
+
+SML6 provides the following miscellaneous helper classes:
+- `org.stianloader.sml6.WellOfDespair`
+
+These helper classes are meant to replace unusually high amounts of repetetive configuration work,
+but their use isn't necessarily a requirement. Similarly, they might not be following best practices in the strictest sense.
+Thus, if you have no idea what you are doing you probably shouldn't be using them.
+If you have an idea on what you are doing, you probably know better approaches already, so don't use the helper
+classes in that case.
+If you are just copy-pasting a buildscript, then I suppose you can use it.
+
 ## Task configuration
 
 ### AggregateMappingsTask
@@ -808,3 +820,93 @@ This behaviour might however get changed in the future with future releases of g
 
 Note 3: When specifying the attributes of the dependencies, the attribute view of a configuration doesn't necessarily
 need to be touched. Though both approaches can be used together, it generally shows that something is wrong when doing so.
+
+## Helper classes
+
+### WellOfDespair
+
+Fully qualified name: `org.stianloader.sml6.WellOfDespair`
+
+The well of eternal torment, agony, and despair - short, the well of despair - is a helper class for dealing with the
+most agonizing part of conventional build tools: Registering ficticious dependencies and consuming them.
+
+That would be already difficult enough on its own, but IDEs are a thing people probably want to use and those need to also consume
+the dependencies and handle them properly. Usually the IDE is the biggest joykill there.
+
+Historically, gslStarplane and early SML6-based projects used `flatDir` repositories and thus conviniently side-stepped the issue
+by making the dependencies real in some sense. Unfortunately there's another joykill out there: The gradle configuration cache.
+While the `flatDir` approach isn't outright forbidden, it won't work if you have the configuration cache enabled and the
+flatfile repository is absent. A problem you'll only realize once you're trying to build the project on another computer or in a CI environment.
+Also `flatDir` is a dead end and isn't supported by gradle. Instead, you should use own-project variants for this usecase,
+but … IDEs don't support them! So yeah, `WellOfDespair` exposes quick workarounds to hammer the support into the IDEs.
+
+Oh, and also - this class only supports Eclipse. IJ probably works decently enough, but probably with a few bugs (see [IDEA-379056](https://youtrack.jetbrains.com/issue/IDEA-379056/Auxiliary-artifacts-not-used-for-non-module-backed-project-dependencies) )
+
+This class provides following static methods:
+- `registerDependency(Project, NamedDomainObjectProvider<Configuration>, Action<VariantArtifactConfigurator>)`
+
+`VariantArtifactConfigurator` exposes following properties:
+- `artifactJar` (**mandatory**): `RegularFileProperty`
+- `capabilityName` (**mandatory**, write-only): `String`
+- `configurationName` (**mandatory**, write-only): `String`
+- `injectEclipseClasspath`: `boolean`, whether to inject the dependency into the project classpath of the eclipse model. The default value is `true`.
+- `sourceJar` (**mandatory**): `RegularFileProperty`
+
+`VariantArtifactConfigurator` also exposes following methods:
+- `configuration(Action<ConsumableConfiguration>)` - sets the closure to be executed when the variant configuration is registered
+- `dependency(Action<ModuleDependency>)` - sets the closure to be executed when the own-project variant dependency is registered
+
+All methods (static or not) that consume an `Action` also come with a variant consuming `Closure` instead.
+
+The `NamedDomainObjectProvider<Configuration>` argument of the `registerDependency` method is the `Configuration` to which the
+dependency should be registered to.
+
+Example use of this method:
+```groovy
+org.stianloader.sml6.WellOfDespair.registerDependency(project, configurations.named('compileOnly')) {
+    configurationName = 'galimulatorElements'
+    capabilityName = 'org.stianloader:galimulator:5.0.2'
+    artifactJar = genSources.lineRemappedOutputJar
+    sourcesJar = genSources.outputSourcesJar
+
+    it.dependency {
+        attributes {
+            attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE, objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform-buildtime'))
+        }
+    }
+}
+```
+
+This roughly corresponds to the following groovy code (minus IDE behaviour workaround logic):
+```groovy
+configurations {
+    consumable('galimulatorElements') {
+        attributes {
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+        }
+
+        artifacts {
+            add('galimulatorElements', genSources.lineRemappedOutputJar)
+        }
+
+        outgoing {
+            capability('org.stianloader:galimulator:5.0.2')
+        }
+    }
+}
+
+dependencies {
+    compileOnly(project(project.path)) {
+        attributes {
+            attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE, objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform-buildtime'))
+        }
+
+        capabilities {
+            requireCapability('org.stianloader:galimulator:5.0.2')
+        }
+    }
+}
+```
