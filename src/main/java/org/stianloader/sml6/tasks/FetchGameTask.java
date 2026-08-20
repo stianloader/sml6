@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -20,6 +21,7 @@ import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
@@ -137,6 +139,7 @@ public abstract class FetchGameTask extends ConventionTask {
 
             // obtain game directory
             String applicationName = this.getSteamApplicationName().get();
+
             if (applicationName == null) {
                 throw new AssertionError("steamApplicationName is null for task " + this.getPath());
             }
@@ -145,13 +148,29 @@ public abstract class FetchGameTask extends ConventionTask {
 
             if (gameDir != null && gameDir.exists()) {
                 String steamJarPath = this.getSteamJarPath().get();
+
                 if (steamJarPath == null) {
                     throw new AssertionError("steamJarPath is null for task " + this.getPath());
                 }
+
                 cleanGameJar = new File(gameDir, steamJarPath);
+
+                // Symlink directories
+                for (String dir : this.getSymlinkDirectories().getOrElse(Collections.emptyList())) {
+                    Path target = this.getLayout().getProjectDirectory().getAsFile().toPath().resolve(dir);
+                    Path source = gameDir.toPath().resolve(dir);
+
+                    if (Files.exists(target) || Files.notExists(source)) {
+                        continue;
+                    }
+
+                    Files.createSymbolicLink(target, source);
+                }
+
                 if (cleanGameJar.exists()) {
                     break found;
                 }
+
                 this.getLogger().error("Unable to resolve game jar file (was able to resolve the potential directory though)! Candidate path: '{}' for task '{}'", cleanGameJar, this.getPath());
                 cleanGameJar = null;
             } else {
@@ -350,4 +369,7 @@ public abstract class FetchGameTask extends ConventionTask {
 
     @Input
     public abstract Property<String> getSteamJarPath();
+
+    @Input
+    public abstract ListProperty<String> getSymlinkDirectories();
 }

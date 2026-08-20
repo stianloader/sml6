@@ -169,6 +169,7 @@ The FetchGameTask task defines following properties:
 - `steamApplicationId` (**mandatory**): `Property<Integer>`, the appId of the game to fetch. This is the primary method of obtaining the application installation directory. The installation directory will be resolved through Steam's application manifests.
 - `steamApplicationName` (**mandatory**): `Property<String>`, the name of the steam application, or rather the name of the directory your game is located in relation to the "common" directory. This method of retrieving the installation dir is a fallback in case the appid approach does not work. Though quite frankly it is unlikely to work well. Also, keep in mind that external library folders will not get queried.
 - `steamJarPath` (**mandatory**): `Property<String>`, the path of game jar in relation to the game's installation directory on steam.
+- `symlinkDirectories`: `ListProperty<String>`, the path of directories in relation to the game's installation directory. These directories are symbolically linked (symlink) to the project folder under the game path. May not work depending on the OS and filesystem. Does nothing if the `primaryGameJar` or the `org.stianloader.sml6.gameJar` system property is set. Already existing target files and non-existing source files will be silently ignored.
 
 SML6 expects games to be bundled as a single jar in the style of packr and roast.
 However, many games are likely to be bundled across multiple jars. In that case, just create a
