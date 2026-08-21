@@ -48,6 +48,7 @@ direct use by API users:
 
 SML6 provides the following artifact transforms:
 - `org.stianloader.sml6.transforms.ApplyRASArtifactTransform`
+- `org.stianloader.sml6.transforms.MigrateLWJGL3ArtifactTransform`
 - `org.stianloader.sml6.transforms.RemapArtifactTransform`
 
 All artifact transforms provided by SML6 are cacheable.
@@ -60,9 +61,10 @@ that should work across the board.
 ## Attributes
 
 SML6 provides the following attributes:
+- `org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE`: `Attribute<Integer>`
 - `org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE`: `Attribute<org.stianloader.sml6.transforms.attributes.RASTransform>`
 
-These attributes are primarily for use in handling when artifact transforms are run.
+These attributes are primarily for use in defining when artifact transforms are run.
 However, SML6 will not automatically make use of those attributes and it is up to the
 user to use them or not. These attributes can of course be substituted with home-brewed
 attributes.
@@ -329,14 +331,12 @@ task remapGalim(type: org.stianloader.sml6.tasks.RemapJarTask, dependsOn: stripG
 
 ### SLLJavaExecTask
 
-**WARNING:** This task is what one can describe as experimental. It doesn't seem to work well at this point and frankly more research is required.
+**WARNING:** This task is slightly unstable. It should work, mostly, but the edges around this task still need to be polished.
 
 The SLLJavaExecTask task extends `JavaExec`, inheriting all relevant properties and methods.
 
 Additionally, it defines the following properties:
-- `bootFiles`: `Property<FileCollection>`, list of all boot URLs. This is used for SLL to correctly handle the transforming classloader. Computed as the union of the `bootGameDependencies` and `bootGameJar` properties. Do not change directly unless necessary.
-- `bootGameDependencies` (**mandatory**): `Property<FileCollection>`, dependency artifacts of `bootGameJar`. Tip: This can also be a `Configuration` (which is a `FileCollection`).
-- `bootGameJar`: `RegularFileProperty`, the game jar that is the main focus of SLL's transforming classloader.
+- `bootFiles` (**mandatory**): `ConfigurableFileCollection`, list of all boot URLs. This is used for SLL to correctly handle the transforming classloader. This should contain the application you are attempting to mod, alongside the dependencies of the game.
 - `mods`: `ListProperty<FileCollection>`, all the present mods. A single `FileCollection` describes the classpath of a single mod 'unit', including resources.
 - `gameMainClass` (**mandatory**): `Property<String>`, the main class which should be executed with the SLL root classloader after SLL finished initialization. Corresponds to the `de.geolykt.starloader.launcher.CLILauncher.mainClass` system property.
 - `propertyExpansionSource`: `RegularFileProperty`, the path to a .properties file from which property expansions within the extension.json file should occur. Only affects mods declared via the `mods` property (and thus indirectly `usingModSourceSet`/`usingModTasks`). Bound to the `gradle.properties` file by convention.
@@ -351,8 +351,9 @@ Example task configuration:
 task runMods(type: org.stianloader.sml6.tasks.SLLJavaExecTask) {
     classpath configurations['sllLauncher']
 
-    bootGameDependencies = stripGame.strippingDependencies
-    bootGameJar = genSources.lineRemappedOutputJar
+    bootFiles.from(configurations.named('lwjgl3Classpath'))
+    bootFiles.from(configurations.named('runtimeGalimulator')) // own-project variant dependency, see the 'WellOfDespair' part of the SML6 readme document for more information on those.
+
     gameMainClass = 'be.julien.particulitis.lwjgl3.Lwjgl3Launcher' // This is for Particulitix; for Galimulator use 'com.example.Main'
 
     usingModSourceSet(tasks.named('compileJava'), java.sourceSets.named('main'))
@@ -675,6 +676,46 @@ Note: The above example transforms all incoming artifacts on a configuration lev
 is generally incompatible with other approaches given that it sets the artifact type attribute.
 Instead, consider using the `RASTransform` attribute defined by SML6 (this attribute is documented, too).
 
+### MigrateLWJGL3ArtifactTransform
+
+Fully qualified name: `org.stianloader.sml6.transforms.MigrateLWJGL3ArtifactTransform`
+
+This `TransformAction` cannot be parametrized and doesn't need to be configured by itself.
+However, you need to ensure that galimulator-lwjgl3ify is on the runtime classpath of the
+artifact that is being transformed.
+
+This is a port of galimulator-lwjgl3ify, version 2.0.0-a20260820. The artifact transform
+expects `org.stianloader:lwjgl3ify:2.0.0-a20260820` to be in the runtime classpath as it shares
+the same compatibility shims as that application. However, it's main and transformer class
+don't need to be explicitly called. The library is available on stianloader's nightly
+builds repository ( https://stianloader.org/maven/ ).
+
+This TransformAction migrates a LibGDX LWJGL 2 application to LWJGL 3.
+
+Currently (2026-08-21) recommended setup:
+```groovy
+dependencies {
+    registerTransform(org.stianloader.sml6.transforms.MigrateLWJGL3ArtifactTransform) {
+        from.attribute(org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE, 2)
+        to.attribute(org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE, 3)
+    }
+}
+```
+
+See the documentation (also in this readme document) for the `LWJGLVersion` Attribute for how to properly configure the attribute,
+as otherwise the transform will not executed.
+
+Furthermore, if you haven't already, you should move your `SLLJavaExecTask` task to use own-project variant dependencies instead of
+directly consuming the game jar. In practice, this would like follows:
+```groovy
+task runMods(type: org.stianloader.sml6.tasks.SLLJavaExecTask) {
+    bootFiles.from(configurations.named('lwjgl3Classpath'))
+    bootFiles.from(configurations.named('runtimeGalimulator'))
+
+    // […]
+}
+```
+
 ### RemapArtifactTransform
 
 Fully qualified name: `org.stianloader.sml6.transforms.RemapArtifactTransform`
@@ -744,9 +785,54 @@ dependencies {
 
 ## Attribute configuration
 
+### LWJGLVersion
+
+Fully qualified path to the attribute definition: `org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE`
+The Attribute is of type: `Attribute<Integer>`
+The id of the attribute is: `org.stianloader.sml6.lwjgl`
+
+The attribute does not define any standard value, though usually it's either set to `2` (for LWJGL 2.X.X) or `3` (for LWJGL 3.X.X).
+
+SML6 does not define standard disambiguation and compatibility rules for this attribute.
+
+This attribute is intended to fine-tune for which artifacts the `MigrateLWJGL3ArtifactTransform` artifact transform is executed.
+
+The currently (2026-08-21) recommended configuration for this attribute is follows:
+```groovy
+org.stianloader.sml6.WellOfDespair.registerDependency(project, configurations.named('compileOnly')) {
+    // […]
+
+    dependency {
+        attributes {
+            attribute(org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE, 3)
+        }
+    }
+
+    configuration {
+        outgoing {
+            attributes {
+                attribute(org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE, 2)
+            }
+        }
+    }
+}
+
+
+dependencies {
+    attributesSchema {
+        attribute(lwjglVersionAttribute)
+    }
+
+    registerTransform(org.stianloader.sml6.transforms.MigrateLWJGL3ArtifactTransform) {
+        from.attribute(org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE, 2)
+        to.attribute(org.stianloader.sml6.transforms.attributes.LWJGLVersion.LWJGL_VERSION_ATTRIBUTE, 3)
+    }
+}
+```
+
 ### RASTransform
 
-Full qualified path to attribute definition: `org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE`.
+Fully qualified path to attribute definition: `org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE`.
 The Attribute is of type: `Attribute<org.stianloader.sml6.transforms.attributes.RASTransform>`.
 The id of the attribute is: `org.stianloader.sml6.ras` 
 
@@ -864,7 +950,12 @@ dependency should be registered to.
 
 Example use of this method:
 ```groovy
-org.stianloader.sml6.WellOfDespair.registerDependency(project, configurations.named('compileOnly')) {
+configurations {
+    runtimeGalimulator
+    compileOnly.extendsFrom(runtimeGalimulator)
+}
+
+org.stianloader.sml6.WellOfDespair.registerDependency(project, configurations.named('runtimeGalimulator')) {
     configurationName = 'galimulatorElements'
     capabilityName = 'org.stianloader:galimulator:5.0.2'
     artifactJar = genSources.lineRemappedOutputJar
@@ -881,6 +972,8 @@ org.stianloader.sml6.WellOfDespair.registerDependency(project, configurations.na
 This roughly corresponds to the following groovy code (minus IDE behaviour workaround logic):
 ```groovy
 configurations {
+    runtimeGalimulator
+    compileOnly.extendsFrom(runtimeGalimulator)
     consumable('galimulatorElements') {
         attributes {
             attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
@@ -900,7 +993,7 @@ configurations {
 }
 
 dependencies {
-    compileOnly(project(project.path)) {
+    runtimeGalimulator(project(project.path)) {
         attributes {
             attribute(org.stianloader.sml6.transforms.attributes.RASTransform.RAS_TRANSFORM_ATTRIBUTE, objects.named(org.stianloader.sml6.transforms.attributes.RASTransform, 'transform-buildtime'))
         }

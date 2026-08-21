@@ -3,13 +3,13 @@ package org.stianloader.sml6.tasks;
 import java.io.File;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
-import java.util.ArrayList;
-import java.util.List;
 
 import javax.inject.Inject;
 
+import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.Directory;
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.FileSystemLocation;
 import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.file.SourceDirectorySet;
@@ -35,24 +35,23 @@ import org.stianloader.sml6.SML6GradlePlugin;
 @DisableCachingByDefault(because = "Caching degrades user experience")
 public abstract class SLLJavaExecTask extends JavaExec {
 
+    private final ConfigurableFileCollection bootFiles;
+
     public SLLJavaExecTask() {
         this.setDescription("Run the development environment.");
         this.setGroup(SML6GradlePlugin.DEFAULT_TASK_GROUP);
+        this.bootFiles = this.getObjectFactory().fileCollection();
         this.getMainClass().convention("de.geolykt.starloader.launcher.IDELauncher");
         this.getPropertyExpansionSource().convention(this.getLayout().getProjectDirectory().file("gradle.properties"));
         this.setIgnoreExitValue(true);
         this.systemProperty("de.geolykt.starloader.launcher.IDELauncher.inlineStarplaneAnnotations", true);
 
-        this.getBootFiles().convention(this.getBootGameDependencies().zip(this.getBootGameJar(), (files, f) -> {
-            return this.getObjectFactory().fileCollection().from(files, f);
-        }));
-
-        this.getJvmArguments().add(this.getBootFiles().map(bootFiles -> {
+        this.getJvmArguments().add(this.getBootFiles().getElements().map(bootFiles -> {
             JSONArray bootURLs = new JSONArray();
 
-            for (File file : bootFiles) {
+            for (FileSystemLocation file : bootFiles) {
                 try {
-                    bootURLs.put(file.toURI().toURL().toExternalForm());
+                    bootURLs.put(file.getAsFile().toURI().toURL().toExternalForm());
                 } catch (MalformedURLException e) {
                     throw new UncheckedIOException(e);
                 }
@@ -92,13 +91,9 @@ public abstract class SLLJavaExecTask extends JavaExec {
 
     @InputFiles
     @Classpath
-    public abstract Property<FileCollection> getBootFiles();
-
-    @Internal("Transitively covered by #getBootFiles()")
-    public abstract Property<FileCollection> getBootGameDependencies();
-
-    @Internal("Transitively covered by #getBootFiles()")
-    public abstract RegularFileProperty getBootGameJar();
+    public ConfigurableFileCollection getBootFiles() {
+        return this.bootFiles;
+    }
 
     @Input
     public abstract Property<String> getGameMainClass();
@@ -110,12 +105,12 @@ public abstract class SLLJavaExecTask extends JavaExec {
     @Classpath
     public abstract ListProperty<FileCollection> getMods();
 
+    @Internal
+    abstract ListProperty<FileCollection> getModSourceSets();
+
     @InputFile
     @Optional
     public abstract RegularFileProperty getPropertyExpansionSource();
-
-    @Internal
-    abstract ListProperty<FileCollection> getModSourceSets();
 
     public void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet) {
         Provider<Directory> classesDir = classesOutput.flatMap(AbstractCompile::getDestinationDirectory);
