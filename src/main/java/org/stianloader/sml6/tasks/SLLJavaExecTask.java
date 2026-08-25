@@ -2,7 +2,10 @@ package org.stianloader.sml6.tasks;
 
 import java.io.File;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Proxy;
 import java.net.MalformedURLException;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.inject.Inject;
 
@@ -28,6 +31,9 @@ import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.compile.AbstractCompile;
 import org.gradle.language.jvm.tasks.ProcessResources;
 import org.gradle.plugins.ide.eclipse.model.EclipseModel;
+import org.gradle.process.internal.ExecAction;
+import org.gradle.process.internal.ExecActionFactory;
+import org.gradle.process.internal.JavaExecAction;
 import org.gradle.work.DisableCachingByDefault;
 import org.json.JSONArray;
 import org.stianloader.sml6.SML6GradlePlugin;
@@ -111,6 +117,63 @@ public abstract class SLLJavaExecTask extends JavaExec {
     @InputFile
     @Optional
     public abstract RegularFileProperty getPropertyExpansionSource();
+
+    @InputFile
+    @Optional
+    public abstract RegularFileProperty getRenderdocExecutable();
+
+    @Override
+    protected ExecActionFactory getExecActionFactory() {
+        ExecActionFactory originalFactory = this.getActualExecActionFactory();
+        RegularFileProperty renderdocExec = this.getRenderdocExecutable();
+
+        renderdocExec.disallowChanges();
+
+        if (!renderdocExec.isPresent()) {
+            return originalFactory;
+        }
+
+        File renderdocFile = renderdocExec.get().getAsFile();
+
+        if (!renderdocFile.exists()) {
+            this.getLogger().warn("The renderdoc executable file '{}' configured for task '{}' does not exist. Using normal java execution instead.", renderdocFile, this.getIdentityPath());
+            return originalFactory;
+        }
+
+        return (ExecActionFactory) Proxy.newProxyInstance(SLLJavaExecTask.class.getClassLoader(), new Class<?>[] { ExecActionFactory.class }, (proxy, method, args) -> {
+            if (method.getName().equals("newJavaExecAction")) {
+                JavaExecAction originalAction = (JavaExecAction) method.invoke(originalFactory, args);
+
+                return Proxy.newProxyInstance(SLLJavaExecTask.class.getClassLoader(), new Class<?>[] { JavaExecAction.class }, (proxy2, method2, args2) -> {
+                    if (method2.getName().equals("execute")) {
+                        ExecAction execAction = originalFactory.newExecAction();
+
+                        List<String> execArgs = new ArrayList<>();
+                        execArgs.add("capture");
+                        execArgs.add("--wait-for-exit");
+                        execArgs.add("--working-dir");
+                        execArgs.add(originalAction.getWorkingDirectory().get().getAsFile().toString());
+                        execArgs.addAll(originalAction.getCommandLine());
+
+                        execAction
+                            .args(execArgs)
+                            .workingDir(originalAction.getWorkingDirectory().get().getAsFile().toString())
+                            .environment(originalAction.getEnvironment())
+                            .executable(renderdocExec.get().getAsFile().toString());
+
+                        return execAction.execute();
+                    }
+
+                    return method2.invoke(originalAction, args2);
+                });
+            } else {
+                return method.invoke(originalFactory, args);
+            }
+        });
+    }
+
+    @Inject
+    protected abstract ExecActionFactory getActualExecActionFactory();
 
     public void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet) {
         Provider<Directory> classesDir = classesOutput.flatMap(AbstractCompile::getDestinationDirectory);

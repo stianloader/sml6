@@ -340,6 +340,7 @@ Additionally, it defines the following properties:
 - `mods`: `ListProperty<FileCollection>`, all the present mods. A single `FileCollection` describes the classpath of a single mod 'unit', including resources.
 - `gameMainClass` (**mandatory**): `Property<String>`, the main class which should be executed with the SLL root classloader after SLL finished initialization. Corresponds to the `de.geolykt.starloader.launcher.CLILauncher.mainClass` system property.
 - `propertyExpansionSource`: `RegularFileProperty`, the path to a .properties file from which property expansions within the extension.json file should occur. Only affects mods declared via the `mods` property (and thus indirectly `usingModSourceSet`/`usingModTasks`). Bound to the `gradle.properties` file by convention.
+- `renderdocExecutable`: `RegularFileProperty`, the path to Renderdoc's `renderdoccmd` executable file. Attaches renderdoc to the java process created by this JavaExec task.
 
 The simplify the mod registration process, the `SLLJavaExecTask` provides the following methods:
 - `void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet)`: Register a mod using the outputs of the `AbstractCompile` task and the resources defined by the given `SourceSet`.
