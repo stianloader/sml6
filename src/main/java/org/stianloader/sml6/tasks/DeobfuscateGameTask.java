@@ -29,7 +29,6 @@ import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
-import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InnerClassNode;
@@ -38,11 +37,9 @@ import org.stianloader.deobf.ClassWrapper;
 import org.stianloader.deobf.IntermediaryGenerator;
 import org.stianloader.deobf.MethodReference;
 import org.stianloader.deobf.Oaktree;
-import org.stianloader.remapper.MemberRef;
 import org.stianloader.remapper.Remapper;
 import org.stianloader.remapper.SimpleHierarchyAwareMappingLookup;
 import org.stianloader.remapper.SimpleTopLevelLookup;
-import org.stianloader.remapper.SimpleTopLevelLookup.MemberRealm;
 import org.stianloader.sml6.SML6GradlePlugin;
 import org.stianloader.sml6.starplane.autodeobf.Autodeobf502;
 import org.stianloader.sml6.starplane.autodeobf.AutodeobfRunner;
@@ -140,16 +137,6 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
             deobfuscator.fixComparators(false);
             deobfuscator.guessAnonymousInnerClasses();
 
-            // sl-deobf adds ACC_SUPER as that was the observed behaviour of compilers when compiling anonymous inner classes.
-            // However, asm-util's ClassCheckAdapter does not tolerate that flag on anonymous inner classes, so we shall strip it.
-            // In the end, this should have absolutely no impact on runtime 90% of the time (the other 10% are when the
-            // ClassCheckAdapter is being used by SLL in case a class failed to transform).
-            for (ClassNode node : deobfuscator.getClassNodesDirectly()) {
-                for (InnerClassNode icn : node.innerClasses) {
-                    icn.access &= ~Opcodes.ACC_SUPER;
-                }
-            }
-
             long startIntermediarisation = System.nanoTime();
             this.getLogger().debug("Deobfuscated classes in " + (startIntermediarisation - startDeobf) / 1_000_000L + " ms.");
 
@@ -180,7 +167,17 @@ public abstract class DeobfuscateGameTask extends ConventionTask {
             if (!this.getWithAutodeobf().get()) {
                 deobfuscator.invalidateNameCaches();
                 deobfuscator.applyInnerclasses();
-                // TODO fix ICN names here
+            }
+
+            // sl-deobf adds ACC_SUPER as that was the observed behaviour of compilers when compiling anonymous inner classes.
+            // However, asm-util's ClassCheckAdapter does not tolerate that flag on anonymous inner classes, so we shall strip it.
+            // In the end, this should have absolutely no impact on runtime 90% of the time (the other 10% are when the
+            // ClassCheckAdapter is being used by SLL in case a class failed to transform).
+
+            for (ClassNode node : deobfuscator.getClassNodesDirectly()) {
+                for (InnerClassNode icn : node.innerClasses) {
+                    icn.access &= ~Opcodes.ACC_SUPER;
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to run sldeobf", e);

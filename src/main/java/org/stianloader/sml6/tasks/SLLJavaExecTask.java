@@ -95,6 +95,9 @@ public abstract class SLLJavaExecTask extends JavaExec {
         }));
     }
 
+    @Inject
+    protected abstract ExecActionFactory getActualExecActionFactory();
+
     @InputFiles
     @Classpath
     public ConfigurableFileCollection getBootFiles() {
@@ -146,7 +149,7 @@ public abstract class SLLJavaExecTask extends JavaExec {
 
                 return Proxy.newProxyInstance(SLLJavaExecTask.class.getClassLoader(), new Class<?>[] { JavaExecAction.class }, (proxy2, method2, args2) -> {
                     if (method2.getName().equals("execute")) {
-                        ExecAction execAction = originalFactory.newExecAction();
+                        ExecAction execAction = this.getActualExecActionFactory().newExecAction();
 
                         List<String> execArgs = new ArrayList<>();
                         execArgs.add("capture");
@@ -154,6 +157,8 @@ public abstract class SLLJavaExecTask extends JavaExec {
                         execArgs.add("--working-dir");
                         execArgs.add(originalAction.getWorkingDirectory().get().getAsFile().toString());
                         execArgs.addAll(originalAction.getCommandLine());
+
+                        Thread.dumpStack();
 
                         execAction
                             .args(execArgs)
@@ -171,9 +176,6 @@ public abstract class SLLJavaExecTask extends JavaExec {
             }
         });
     }
-
-    @Inject
-    protected abstract ExecActionFactory getActualExecActionFactory();
 
     public void usingModSourceSet(Provider<AbstractCompile> classesOutput, Provider<SourceSet> resourceSet) {
         Provider<Directory> classesDir = classesOutput.flatMap(AbstractCompile::getDestinationDirectory);
