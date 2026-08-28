@@ -158,8 +158,6 @@ public abstract class SLLJavaExecTask extends JavaExec {
                         execArgs.add(originalAction.getWorkingDirectory().get().getAsFile().toString());
                         execArgs.addAll(originalAction.getCommandLine());
 
-                        Thread.dumpStack();
-
                         execAction
                             .args(execArgs)
                             .workingDir(originalAction.getWorkingDirectory().get().getAsFile().toString())
